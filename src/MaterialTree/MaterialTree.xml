@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<widget id="MaterialTree.widget.MaterialTree" needsEntityContext="true" xmlns="http://www.mendix.com/widget/1.0/">
+    <name>MaterialTree</name>
+    <description>The description of this widget.</description>
+
+    <icon />
+
+    <properties>
+        <property key="treeEntity" type="entity" allowNonPersistableEntities="true">
+            <caption>Tree Entity</caption>
+            <category>Data</category>
+            <description>Entity containing tree node data.</description>
+        </property>
+        <property key="mfRootData" type="microflow" required="true">
+            <caption>Root Data Microflow</caption>
+            <category>Data</category>
+            <description>Microflow called to fetch the top level tree entries.</description>
+            <returnType type="Object" isList="true" entityProperty="treeEntity" />
+        </property>
+        <property key="mfNodeData" type="microflow" required="true" entityProperty="treeEntity">
+            <caption>Node Data Microflow</caption>
+            <category>Data</category>
+            <description>Microflow called to fetch entries on subnodes.</description>
+            <returnType type="Object" isList="true" entityProperty="treeEntity" />
+        </property>
+        <property key="displayAttribute" type="attribute" required="true" entityProperty="treeEntity">
+            <caption>Display text</caption>
+            <category>Data</category>
+            <description>Attribute displayed for a node.</description>
+            <attributeTypes>
+              <attributeType name="String" />
+            </attributeTypes>
+        </property>
+        <property key="expandableAttribute" type="attribute" required="true" entityProperty="treeEntity">
+            <caption>Expandable attribute</caption>
+            <category>Data</category>
+            <description>For an expandable node, the tree can be expanded on click</description>
+            <attributeTypes>
+              <attributeType name="Boolean" />
+            </attributeTypes>
+        </property>
+    </properties>
+</widget>
