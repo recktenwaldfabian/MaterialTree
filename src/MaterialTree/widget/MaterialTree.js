@@ -36,8 +36,9 @@ define([
   "dojo/on",
 
   "MaterialTree/lib/jquery-1.11.2",
-  "dojo/text!MaterialTree/widget/template/MaterialTree.html"
-], function (declare, _WidgetBase, _TemplatedMixin, dom, dojoDom, dojoProp, dojoGeometry, dojoClass, dojoStyle, dojoConstruct, dojoArray, dojoLang, dojoText, dojoHtml, dojoEvent, dojoOn, _jQuery, widgetTemplate) {
+  "dojo/text!MaterialTree/widget/template/MaterialTree.html",
+  "MaterialTree/lib/jstree/jstree"
+], function (declare, _WidgetBase, _TemplatedMixin, dom, dojoDom, dojoProp, dojoGeometry, dojoClass, dojoStyle, dojoConstruct, dojoArray, dojoLang, dojoText, dojoHtml, dojoEvent, dojoOn, _jQuery, widgetTemplate ) {
   "use strict";
 
   var $ = _jQuery.noConflict(true);
@@ -46,9 +47,6 @@ define([
   return declare("MaterialTree.widget.MaterialTree", [ _WidgetBase, _TemplatedMixin ], {
     // _TemplatedMixin will create our dom node using this HTML template.
     templateString: widgetTemplate,
-
-    // DOM elements
-    rootLiNode: null,
 
     // Parameters configured in the Modeler.
     mfRootData: "",
@@ -59,7 +57,6 @@ define([
     // Internal variables. Non-primitives created in the prototype are shared between all widget instances.
     _handles: null,
     _contextObj: null,
-    _rootNode: { subNodes: [] },
 
     // dojo.declare.constructor is called to construct the widget instance. Implement to initialize non-primitive properties.
     constructor: function () {
@@ -70,43 +67,55 @@ define([
     // dijit._WidgetBase.postCreate is called after constructing the widget. Implement to do extra setup work.
     postCreate: function () {
       logger.debug(this.id + ".postCreate");
-
-      this._rootNode.domNodeList = this.rootLiNode;
-
-      this._updateRendering();
     },
 
     // mxui.widget._WidgetBase.update is called when context is changed or initialized. Implement to re-render and / or fetch data.
-    update: function (obj, callback) {
+    update: function (obj, update_callback) {
       logger.debug(this.id + ".update");
 
       this._contextObj = obj;
-      this._rootNode.obj = obj;
 
-      // If a microflow has been set execute the microflow on a click.
-      this._fetchNodeData( this._rootNode, this.mfRootData );
+      var mxTree = this;
 
-      this._resetSubscriptions();
-      this._updateRendering(callback); // We're passing the callback to updateRendering to be called after DOM-manipulation
-    },
+      $(this.domNode).jstree({
+        'core' : {
+          'data' : function (node, data_callback ) {
+            // this context is switched to the jsTree here
+            if ( node.id == '#' ) {
+              var dataMF = mxTree.mfRootData;
+              var nodeObj = mxTree._contextObj;
+            } else {
+              var dataMF = mxTree.mfNodeData;
+              var nodeObj = node.original.obj;
+            }
 
-    _fetchNodeData: function( node, mfSource ) {
-      mx.ui.action( mfSource, {
-        params: {
-          applyto: "selection",
-          guids: [ node.obj.getGuid() ]
-        },
-        scope: this.mxform,
-        callback: function( objs ) {
-          node.subNodes = [];
+            mx.ui.action( dataMF, {
+              params: {
+                applyto: "selection",
+                guids: [ nodeObj.getGuid() ]
+              },
+              scope: mxTree.mxform,
+              callback: function( objs ) {
+                var newNodes = [];
 
-          objs.forEach( function( obj ) {
-            node.subNodes.push( { obj: obj, rootNode: node })
-          }, this)
+                objs.forEach( function( obj ) {
+                  newNodes.push({
+                    text: obj.get(mxTree.displayAttribute),
+                    children: obj.get(mxTree.expandableAttribute),
+                    obj: obj
+                  });
+                })
 
-          this._updateRendering();
+                data_callback.call( this, newNodes );
+              }
+            }, this );
+
+          }
         }
-      }, this );
+      });
+
+      //this._resetSubscriptions();
+      mendix.lang.nullExec(update_callback);
     },
 
     // mxui.widget._WidgetBase.uninitialize is called when the widget is destroyed. Implement to do special tear-down work.
@@ -116,49 +125,9 @@ define([
     },
 
     // Rerender the interface.
-    _updateRendering: function (callback) {
+    _updateRendering: function () {
       logger.debug(this.id + "._updateRendering");
-
-      dojoConstruct.empty( this.rootLiNode );
-
-      this._rootNode.subNodes.forEach( this._renderNode, this );
-
-      // The callback, coming from update, needs to be executed, to let the page know it finished rendering
-      mendix.lang.nullExec(callback);
     },
-
-    _renderNode: function( node ) {
-      var expandable = node.obj.get( this.expandableAttribute );
-
-      node.domNode = dojoConstruct.place('<li>' + node.obj.get( this.displayAttribute ) + '</li>', node.rootNode.domNodeList)
-
-      if ( expandable ) {
-        if ( node.subNodes ) {
-          dojoClass.add( node.domNode, 'material-tree-expanded' );
-
-          node.domNodeList = dojoConstruct.place('<ul></ul>', node.domNode);
-          node.subNodes.forEach( this._renderNode, this );
-        } else {
-          dojoClass.add( node.domNode, 'material-tree-expandable' );
-        }
-      }
-
-      dojoOn(node.domNode, "click",
-      dojo.hitch( this, function( ev ) {
-        dojoEvent.stop( ev );
-        if ( expandable ) {
-          if ( node.domNodeList ) {
-            node.subNodes = undefined;
-            node.domNodeList = undefined;
-            this._updateRendering();
-          } else {
-            this._fetchNodeData( node, this.mfNodeData );
-          }
-        }
-      })
-    );
-
-  },
 
   _unsubscribe: function () {
     if (this._handles) {
@@ -183,18 +152,9 @@ define([
           this._updateRendering();
         })
       });
-      /*
-      var attrHandle = mx.data.subscribe({
-      guid: this._contextObj.getGuid(),
-      attr: this.displayA,
-      callback: dojoLang.hitch(this, function (guid, attr, attrValue) {
-      this._updateRendering();
-    })
-  });
-  */
-  this._handles = [ objectHandle ];
-}
-}
+      this._handles = [ objectHandle ];
+    }
+  }
 });
 });
 
