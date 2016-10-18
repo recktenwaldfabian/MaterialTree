@@ -49,10 +49,13 @@ define([
     templateString: widgetTemplate,
 
     // Parameters configured in the Modeler.
-    mfRootData: "",
-    mfNodeData: "",
-    displayAttribute: "",
-    expandableAttribute: "",
+    mfRootData: "", // microflow providing the first tree level; receives context object
+    mfNodeData: "", // microflow providing children of a node; receives the parent node object
+
+    displayAttribute: "", // attribute containing the text displayed in a node
+    expandableAttribute: "", // determines if a node can be expanded (has children)
+
+    mfOnChange: "", // microflow triggered when a node is selected
 
     // Internal variables. Non-primitives created in the prototype are shared between all widget instances.
     _handles: null,
@@ -112,7 +115,22 @@ define([
 
           }
         }
-      });
+      }).on( 'changed.jstree', function( e, data ) {
+        var nodeObj = data.node.original.obj;
+        var event = data.event;
+        if ( mxTree.mfOnChange ) {
+          mx.ui.action( mxTree.mfOnChange, {
+            params: {
+              applyto: "selection",
+              guids: [ nodeObj.getGuid() ]
+            },
+            scope: mxTree.mxform,
+            callback: function() {
+              // mf call ok
+            }
+          }, this );
+        }
+      } );
 
       //this._resetSubscriptions();
       mendix.lang.nullExec(update_callback);

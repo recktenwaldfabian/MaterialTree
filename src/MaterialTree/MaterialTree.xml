@@ -39,5 +39,12 @@
               <attributeType name="Boolean" />
             </attributeTypes>
         </property>
+
+        <property key="mfOnChange" type="microflow" required="false" entityProperty="treeEntity">
+            <caption>Onchange Microflow</caption>
+            <category>Interaction</category>
+            <description>Triggered when the selected node changes.</description>
+            <returnType type="Void" />
+        </property>
     </properties>
 </widget>
