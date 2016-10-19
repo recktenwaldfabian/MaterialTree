@@ -46,5 +46,35 @@
             <description>Triggered when the selected node changes.</description>
             <returnType type="Void" />
         </property>
+
+
+        <property key="typeAttribute" type="attribute" required="false" entityProperty="treeEntity">
+            <caption>Type attribute</caption>
+            <category>Display</category>
+            <description>Used in mapping entry types to icons.</description>
+            <attributeTypes>
+              <attributeType name="String" />
+              <attributeType name="Enum" />
+            </attributeTypes>
+        </property>
+
+        <property key="typeMapping" type="object" isList="true" required="false">
+          <caption>Type Mapping</caption>
+          <category>Display</category>
+          <description>Map types to icons</description>
+          <properties>
+            <property key="type" type="string" required="true">
+              <caption>Type</caption>
+              <category>Display</category>
+              <description>Type given by the type attribute</description>
+            </property>
+            <property key="icon" type="image" required="false">
+              <caption>Icon</caption>
+              <category>Display</category>
+              <description>Icon to be displayed for this type.</description>
+            </property>
+          </properties>
+        </property>
+
     </properties>
 </widget>

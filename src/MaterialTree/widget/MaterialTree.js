@@ -57,6 +57,9 @@ define([
 
     mfOnChange: "", // microflow triggered when a node is selected
 
+    typeAttribute: "", //
+    typeMapping: "", //
+
     // Internal variables. Non-primitives created in the prototype are shared between all widget instances.
     _handles: null,
     _contextObj: null,
@@ -79,6 +82,15 @@ define([
       this._contextObj = obj;
 
       var mxTree = this;
+
+      var treeTypeMapping = {};
+      mxTree.typeMapping.forEach( function( map ) {
+        treeTypeMapping[ map.type ] = {
+          'icon' : './'+map.icon
+        };
+      });
+
+      console.log( treeTypeMapping );
 
       $(this.domNode).jstree({
         'core' : {
@@ -105,7 +117,8 @@ define([
                   newNodes.push({
                     text: obj.get(mxTree.displayAttribute),
                     children: obj.get(mxTree.expandableAttribute),
-                    obj: obj
+                    obj: obj,
+                    type: obj.get(mxTree.typeAttribute),
                   });
                 })
 
@@ -114,7 +127,9 @@ define([
             }, this );
 
           }
-        }
+        },
+        'types' : treeTypeMapping,
+        'plugins' : [ 'types' ]
       }).on( 'changed.jstree', function( e, data ) {
         var nodeObj = data.node.original.obj;
         var event = data.event;
