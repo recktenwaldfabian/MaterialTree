@@ -52,6 +52,8 @@ define([
     mfRootData: "", // microflow providing the first tree level; receives context object
     mfNodeData: "", // microflow providing children of a node; receives the parent node object
 
+    treeEntity: '', // entity used for tree nodes
+
     displayAttribute: "", // attribute containing the text displayed in a node
     expandableAttribute: "", // determines if a node can be expanded (has children)
 
@@ -63,6 +65,7 @@ define([
     // Internal variables. Non-primitives created in the prototype are shared between all widget instances.
     _handles: null,
     _contextObj: null,
+    _jstree: null,
 
     // dojo.declare.constructor is called to construct the widget instance. Implement to initialize non-primitive properties.
     constructor: function () {
@@ -81,114 +84,171 @@ define([
 
       this._contextObj = obj;
 
-      var mxTree = this;
+      console.log( this.id + ".update" );
 
       var treeTypeMapping = {};
-      mxTree.typeMapping.forEach( function( map ) {
+      this.typeMapping.forEach( function( map ) {
         treeTypeMapping[ map.type ] = {
           'icon' : './'+map.icon
         };
       });
 
-      console.log( treeTypeMapping );
-
-      $(this.domNode).jstree({
+      this._jstree = $(this.domNode).jstree({
         'core' : {
-          'data' : function (node, data_callback ) {
-            // this context is switched to the jsTree here
-            if ( node.id == '#' ) {
-              var dataMF = mxTree.mfRootData;
-              var nodeObj = mxTree._contextObj;
-            } else {
-              var dataMF = mxTree.mfNodeData;
-              var nodeObj = node.original.obj;
-            }
-
-            mx.ui.action( dataMF, {
-              params: {
-                applyto: "selection",
-                guids: [ nodeObj.getGuid() ]
-              },
-              scope: mxTree.mxform,
-              callback: function( objs ) {
-                var newNodes = [];
-
-                objs.forEach( function( obj ) {
-                  newNodes.push({
-                    text: obj.get(mxTree.displayAttribute),
-                    children: obj.get(mxTree.expandableAttribute),
-                    obj: obj,
-                    type: obj.get(mxTree.typeAttribute),
-                  });
-                })
-
-                data_callback.call( this, newNodes );
-              }
-            }, this );
-
-          }
+          'data' : dojoLang.hitch( this, '_treeDataSource'),
+          // allow modifications to the tree
+          'check_callback' : function (operation, node, node_parent, node_position, more) {
+            return true;
+          },
         },
         'types' : treeTypeMapping,
         'plugins' : [ 'types' ]
-      }).on( 'changed.jstree', function( e, data ) {
-        var nodeObj = data.node.original.obj;
-        var event = data.event;
-        if ( mxTree.mfOnChange ) {
-          mx.ui.action( mxTree.mfOnChange, {
-            params: {
-              applyto: "selection",
-              guids: [ nodeObj.getGuid() ]
-            },
-            scope: mxTree.mxform,
-            callback: function() {
-              // mf call ok
-            }
-          }, this );
-        }
-      } );
+
+      }).on( 'changed.jstree', dojoLang.hitch( this, '_changed_jstree') );
+
+      this._jstree = $(this.domNode).jstree(true);
 
       //this._resetSubscriptions();
       mendix.lang.nullExec(update_callback);
     },
 
+    _changed_jstree: function( e, data ) {
+      var nodeObj = data.node.original.obj;
+      var event = data.event;
+
+      if ( data.action == 'select_node' ) {
+        if ( this.mfOnChange ) {
+          mx.ui.action( this.mfOnChange, {
+            params: {
+              applyto: "selection",
+              guids: [ nodeObj.getGuid() ]
+            },
+            scope: this.mxform,
+            callback: function() {
+              // mf call ok
+            }
+          }, this );
+        }
+      } else if ( data.action == 'delete_node' ) {
+        // do something on delete
+      } else {
+        // do something on other changes?
+      }
+    },
+
+    _treeDataSource: function (node, data_callback ) {
+      // this context is switched to the jsTree here
+      if ( node.id == '#' ) {
+        var dataMF = this.mfRootData;
+        var nodeObj = this._contextObj;
+      } else {
+        var dataMF = this.mfNodeData;
+        var nodeObj = node.original.obj;
+      }
+
+      mx.ui.action( dataMF, {
+        params: {
+          applyto: "selection",
+          guids: [ nodeObj.getGuid() ]
+        },
+        scope: this.mxform,
+        callback: function( objs ) {
+          var newNodes = [];
+
+          objs.forEach( function( obj ) {
+            this.subscribe({
+              guid: obj.getGuid(),
+              callback: dojoLang.hitch( this, '_clientRefreshObject'),
+            });
+
+            newNodes.push( this._buildNodeFromObject( obj ) );
+          }, this);
+
+          data_callback.call( this._jstree, newNodes );
+        }
+      }, this );
+
+    },
+
+    // Called when a client refresh is triggered on a tree node object
+    // * reload all children of this node (when open)
+    _clientRefreshObject: function( guid ) {
+      var node = this._jstree.get_node('[objGuid='+guid+']');
+      var obj = node.original.obj;
+
+      this._jstree.rename_node( node, obj.get( this.displayAttribute ) );
+      this._jstree.set_type( node, obj.get( this.typeAttribute ) );
+
+      if ( ! node.state.loaded ) {
+        this._jstree.load_node( node );
+      } else {
+        // load_node would simply do a hard reload (no clean refresh possible)
+        // this._jstree.load_node( node );
+
+        // refresh child nodes if node was already loaded
+        mx.ui.action( this.mfNodeData, {
+          params: {
+            applyto: "selection",
+            guids: [ obj.getGuid() ]
+          },
+          scope: this.mxform,
+          callback: function( reloadedObjs ) {
+            var newGuids = reloadedObjs.map( function(ro) { return ro.getGuid(); }).sort();
+            var childNodes = node.children.map( function(childnodeId) { return this._jstree.get_node(childnodeId); }, this);
+            var oldGuids = childNodes.map( function(childNode) { return childNode.original.obj.getGuid(); }).sort();
+
+            var i=0, j=0;
+            while ( i<newGuids.length && j<oldGuids.length ) {
+              if ( newGuids[i] == oldGuids[j] ) {
+                i++; j++;
+              } else if ( newGuids[i] < oldGuids[j] ) {
+                var newObj = reloadedObjs.find( function(obj) { return obj.getGuid() == newGuids[i];} );
+                this._jstree.create_node( node, this._buildNodeFromObject( newObj ) );
+                this.subscribe({
+                  guid: newObj.getGuid(),
+                  callback: dojoLang.hitch( this, '_clientRefreshObject'),
+                });
+                i++;
+              } else {
+                this._jstree.delete_node( '[objGuid='+oldGuids[j]+']');
+                j++;
+              }
+            }
+            while ( i<newGuids.length ) {
+              var newObj = reloadedObjs.find( function(obj) { return obj.getGuid() == newGuids[i];} );
+              this._jstree.create_node( node, this._buildNodeFromObject( newObj ) );
+              this.subscribe({
+                guid: newObj.getGuid(),
+                callback: dojoLang.hitch( this, '_clientRefreshObject'),
+              });
+              i++;
+            }
+            while ( j<oldGuids.length ) {
+              this._jstree.delete_node( '[objGuid='+oldGuids[j]+']' );
+              j++;
+            }
+          }
+        }, this);
+      }
+    },
+
+    // Create node object from MxObject using configured attributes
+    _buildNodeFromObject: function( obj ) {
+      return {
+        id: obj.getGuid(),
+        text: obj.get( this.displayAttribute ),
+        children: obj.get( this.expandableAttribute ) ? true : [],
+        obj: obj,
+        type: obj.get( this.typeAttribute ),
+        li_attr: { objGuid: obj.getGuid() }
+      };
+    },
+
     // mxui.widget._WidgetBase.uninitialize is called when the widget is destroyed. Implement to do special tear-down work.
     uninitialize: function () {
-      logger.debug(this.id + ".uninitialize");
-      // Clean up listeners, helper objects, etc. There is no need to remove listeners added with this.connect / this.subscribe / this.own.
     },
 
-    // Rerender the interface.
-    _updateRendering: function () {
-      logger.debug(this.id + "._updateRendering");
-    },
-
-  _unsubscribe: function () {
-    if (this._handles) {
-      dojoArray.forEach(this._handles, function (handle) {
-        mx.data.unsubscribe(handle);
-      });
-      this._handles = [];
-    }
-  },
-
-  // Reset subscriptions.
-  _resetSubscriptions: function () {
-    logger.debug(this.id + "._resetSubscriptions");
-    // Release handles on previous object, if any.
-    this._unsubscribe();
-
-    // When a mendix object exists create subscribtions.
-    if (this._contextObj) {
-      var objectHandle = mx.data.subscribe({
-        guid: this._contextObj.getGuid(),
-        callback: dojoLang.hitch(this, function (guid) {
-          this._updateRendering();
-        })
-      });
-      this._handles = [ objectHandle ];
-    }
-  }
-});
+  });
 });
 
 require(["MaterialTree/widget/MaterialTree"]);

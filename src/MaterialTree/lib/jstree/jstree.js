@@ -4593,7 +4593,11 @@
 			}
 			else {
 				dom.removeClass(old).css("background","");
-				dom.addClass('jstree-themeicon-custom').css("background", "url('" + icon + "') center center no-repeat").attr("rel",icon);
+				dom.addClass('jstree-themeicon-custom')
+					.css("background-image", "url('" + icon + "')")
+					.css("background-position", "center center")
+					.css("background-size", "cover")
+					.attr("rel",icon);
 				if(old === false) { this.show_icon(obj); }
 			}
 			return true;
@@ -6002,7 +6006,7 @@
 					if($.vakata.context.settings.icons) {
 						str += "<"+"i ";
 						if(val.icon) {
-							if(val.icon.indexOf("/") !== -1 || val.icon.indexOf(".") !== -1) { str += " style='background:url(\"" + val.icon + "\") center center no-repeat' "; }
+							if(val.icon.indexOf("/") !== -1 || val.icon.indexOf(".") !== -1) { str += " style='background-image:url(\"" + val.icon + "\"); background-position: center center; background-size: cover;' "; }
 							else { str += " class='" + val.icon + "' "; }
 						}
 						str += "><"+"/i><"+"span class='vakata-contextmenu-sep'>&#160;<"+"/span>";
