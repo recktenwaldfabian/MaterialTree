@@ -53,6 +53,7 @@ define([
     mfNodeData: "", // microflow providing children of a node; receives the parent node object
 
     treeEntity: '', // entity used for tree nodes
+    selectionReference: '', // path to selected entry
 
     displayAttribute: "", // attribute containing the text displayed in a node
     expandableAttribute: "", // determines if a node can be expanded (has children)
@@ -84,6 +85,11 @@ define([
 
       this._contextObj = obj;
 
+      this.subscribe({
+        guid: this._contextObj.getGuid(),
+        callback: dojoLang.hitch( this, '_clientRefreshContext'),
+      });
+
       console.log( this.id + ".update" );
 
       var treeTypeMapping = {};
@@ -95,6 +101,7 @@ define([
 
       this._jstree = $(this.domNode).jstree({
         'core' : {
+          'multiple' : false,
           'data' : dojoLang.hitch( this, '_treeDataSource'),
           // allow modifications to the tree
           'check_callback' : function (operation, node, node_parent, node_position, more) {
@@ -104,7 +111,8 @@ define([
         'types' : treeTypeMapping,
         'plugins' : [ 'types' ]
 
-      }).on( 'changed.jstree', dojoLang.hitch( this, '_changed_jstree') );
+      }).on( 'changed.jstree', dojoLang.hitch( this, '_changed_jstree') )
+      .on( 'load_node.jstree', dojoLang.hitch( this, '_load_node_jstree') );
 
       this._jstree = $(this.domNode).jstree(true);
 
@@ -113,10 +121,11 @@ define([
     },
 
     _changed_jstree: function( e, data ) {
-      var nodeObj = data.node.original.obj;
       var event = data.event;
 
       if ( data.action == 'select_node' ) {
+        var nodeObj = data.node.original.obj;
+
         if ( this.mfOnChange ) {
           mx.ui.action( this.mfOnChange, {
             params: {
@@ -131,9 +140,13 @@ define([
         }
       } else if ( data.action == 'delete_node' ) {
         // do something on delete
-      } else {
-        // do something on other changes?
+      } else if ( data.action == 'ready' ){
+        // do something when tree is ready
       }
+    },
+
+    _load_node_jstree: function( e, data ) {
+      this._updateSelectionFromContext();
     },
 
     _treeDataSource: function (node, data_callback ) {
@@ -174,10 +187,33 @@ define([
     // * reload all children of this node (when open)
     _clientRefreshObject: function( guid ) {
       var node = this._jstree.get_node('[objGuid='+guid+']');
-      var obj = node.original.obj;
+      this._reloadNode( node, this.mfNodeData, node.original.obj );
+    },
 
-      this._jstree.rename_node( node, obj.get( this.displayAttribute ) );
-      this._jstree.set_type( node, obj.get( this.typeAttribute ) );
+    // Called when a client refreshes the context object
+    _clientRefreshContext: function( guid ) {
+      var node = this._jstree.get_node('#');
+      this._reloadNode( node, this.mfRootData, this._contextObj );
+
+      this._updateSelectionFromContext();
+    },
+
+    _updateSelectionFromContext: function() {
+      if ( this.selectionReference ) {
+        var referenceGuid = this._contextObj.getReference( this.selectionReference.split('/')[0] );
+        if ( referenceGuid ) {
+          this._jstree.deselect_all( true );
+          this._jstree.select_node( '[objGuid='+referenceGuid+']', true );
+        }
+      }
+    },
+
+    _reloadNode: function( node, dataMF, nodeObj ) {
+
+      if ( node.id != '#' ) {
+        this._jstree.rename_node( node, nodeObj.get( this.displayAttribute ) );
+        this._jstree.set_type( node, nodeObj.get( this.typeAttribute ) );
+      }
 
       if ( ! node.state.loaded ) {
         this._jstree.load_node( node );
@@ -186,10 +222,10 @@ define([
         // this._jstree.load_node( node );
 
         // refresh child nodes if node was already loaded
-        mx.ui.action( this.mfNodeData, {
+        mx.ui.action( dataMF, {
           params: {
             applyto: "selection",
-            guids: [ obj.getGuid() ]
+            guids: [ nodeObj.getGuid() ]
           },
           scope: this.mxform,
           callback: function( reloadedObjs ) {

@@ -39,6 +39,12 @@
               <attributeType name="Boolean" />
             </attributeTypes>
         </property>
+        <property key="selectionReference" type="entity" isPath="yes" pathType="reference" required="false" allowNonPersistableEntities="true">
+            <caption>Selection Reference</caption>
+            <category>Data</category>
+            <description>Reference to a Tree Entity which is shown as selected</description>
+        </property>
+
 
         <property key="mfOnChange" type="microflow" required="false" entityProperty="treeEntity">
             <caption>Onchange Microflow</caption>
