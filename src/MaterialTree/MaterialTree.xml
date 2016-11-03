@@ -39,6 +39,14 @@
               <attributeType name="Boolean" />
             </attributeTypes>
         </property>
+        <property key="openedAttribute" type="attribute" required="false" entityProperty="treeEntity">
+            <caption>Opened attribute</caption>
+            <category>Data</category>
+            <description>If configured, this will set the initial node opened state.</description>
+            <attributeTypes>
+              <attributeType name="Boolean" />
+            </attributeTypes>
+        </property>
         <property key="selectionReference" type="entity" isPath="yes" pathType="reference" required="false" allowNonPersistableEntities="true">
             <caption>Selection Reference</caption>
             <category>Data</category>

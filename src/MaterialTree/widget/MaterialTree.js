@@ -57,6 +57,7 @@ define([
 
     displayAttribute: "", // attribute containing the text displayed in a node
     expandableAttribute: "", // determines if a node can be expanded (has children)
+    openedAttribute: "", // determines if a node is initially open
 
     mfOnChange: "", // microflow triggered when a node is selected
 
@@ -90,8 +91,6 @@ define([
         callback: dojoLang.hitch( this, '_clientRefreshContext'),
       });
 
-      console.log( this.id + ".update" );
-
       var treeTypeMapping = {};
       this.typeMapping.forEach( function( map ) {
         treeTypeMapping[ map.type ] = {
@@ -121,6 +120,8 @@ define([
     },
 
     _changed_jstree: function( e, data ) {
+      logger.debug(this.id + ".changed.jstree");
+
       var event = data.event;
 
       if ( data.action == 'select_node' ) {
@@ -146,6 +147,8 @@ define([
     },
 
     _load_node_jstree: function( e, data ) {
+      logger.debug(this.id + ".load_node.jstree");
+      //console.log( '_load_node' );
       this._updateSelectionFromContext();
     },
 
@@ -186,29 +189,35 @@ define([
     // Called when a client refresh is triggered on a tree node object
     // * reload all children of this node (when open)
     _clientRefreshObject: function( guid ) {
+      logger.debug(this.id + ".refresh[guid:"+guid+"]");
       var node = this._jstree.get_node('[objGuid='+guid+']');
       this._reloadNode( node, this.mfNodeData, node.original.obj );
     },
 
     // Called when a client refreshes the context object
     _clientRefreshContext: function( guid ) {
+      logger.debug(this.id + ".refresh.context[guid:"+guid+"]");
       var node = this._jstree.get_node('#');
       this._reloadNode( node, this.mfRootData, this._contextObj );
 
+      //console.log( 'refresh context' );
       this._updateSelectionFromContext();
     },
 
     _updateSelectionFromContext: function() {
+      logger.debug(this.id + ".updateselection");
+
       if ( this.selectionReference ) {
         var referenceGuid = this._contextObj.getReference( this.selectionReference.split('/')[0] );
+        this._jstree.deselect_all( true );
         if ( referenceGuid ) {
-          this._jstree.deselect_all( true );
           this._jstree.select_node( '[objGuid='+referenceGuid+']', true );
         }
       }
     },
 
     _reloadNode: function( node, dataMF, nodeObj ) {
+      logger.debug(this.id + ".reloadNode[id:"+ node.id + "]" );
 
       if ( node.id != '#' ) {
         this._jstree.rename_node( node, nodeObj.get( this.displayAttribute ) );
@@ -232,6 +241,8 @@ define([
             var newGuids = reloadedObjs.map( function(ro) { return ro.getGuid(); }).sort();
             var childNodes = node.children.map( function(childnodeId) { return this._jstree.get_node(childnodeId); }, this);
             var oldGuids = childNodes.map( function(childNode) { return childNode.original.obj.getGuid(); }).sort();
+
+            //console.log( 'reloaded node ' + node.id + ', guid: ' + (node.original && node.original.obj.getGuid())  );
 
             var i=0, j=0;
             while ( i<newGuids.length && j<oldGuids.length ) {
@@ -270,18 +281,24 @@ define([
 
     // Create node object from MxObject using configured attributes
     _buildNodeFromObject: function( obj ) {
-      return {
+      var nodeConfig = {
         id: obj.getGuid(),
         text: obj.get( this.displayAttribute ),
         children: obj.get( this.expandableAttribute ) ? true : [],
         obj: obj,
+        state: {
+          opened: this.openedAttribute ? obj.get( this.openedAttribute ) : false
+        },
         type: obj.get( this.typeAttribute ),
         li_attr: { objGuid: obj.getGuid() }
       };
+
+      return nodeConfig;
     },
 
     // mxui.widget._WidgetBase.uninitialize is called when the widget is destroyed. Implement to do special tear-down work.
     uninitialize: function () {
+      logger.debug(this.id + ".uninitialize");
     },
 
   });
