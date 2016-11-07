@@ -167,7 +167,7 @@ define([
           applyto: "selection",
           guids: [ nodeObj.getGuid() ]
         },
-        scope: this.mxform,
+        origin: this.mxform,
         callback: function( objs ) {
           var newNodes = [];
 
@@ -261,6 +261,7 @@ define([
                 j++;
               }
             }
+
             while ( i<newGuids.length ) {
               var newObj = reloadedObjs.find( function(obj) { return obj.getGuid() == newGuids[i];} );
               this._jstree.create_node( node, this._buildNodeFromObject( newObj ) );
@@ -270,10 +271,16 @@ define([
               });
               i++;
             }
+
             while ( j<oldGuids.length ) {
               this._jstree.delete_node( '[objGuid='+oldGuids[j]+']' );
               j++;
             }
+
+            // reorder nodes according to new order provided in DS MF
+            reloadedObjs.forEach( function( obj, idx ) {
+              this._jstree.move_node( '[objGuid=' + obj.getGuid() + ']', node, idx );
+            }, this );
           }
         }, this);
       }
@@ -282,7 +289,7 @@ define([
     // Create node object from MxObject using configured attributes
     _buildNodeFromObject: function( obj ) {
       var nodeConfig = {
-        id: obj.getGuid(),
+//        id: obj.getGuid(),
         text: obj.get( this.displayAttribute ),
         children: obj.get( this.expandableAttribute ) ? true : [],
         obj: obj,
