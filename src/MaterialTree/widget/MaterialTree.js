@@ -20,6 +20,7 @@ define([
   "dojo/_base/declare",
   "mxui/widget/_WidgetBase",
   "dijit/_TemplatedMixin",
+  "MaterialTree/lib/lodash.core.4.16.6",
 
   "mxui/dom",
   "dojo/dom",
@@ -38,7 +39,7 @@ define([
   "MaterialTree/lib/jquery-1.11.2",
   "dojo/text!MaterialTree/widget/template/MaterialTree.html",
   "MaterialTree/lib/jstree/jstree"
-], function (declare, _WidgetBase, _TemplatedMixin, dom, dojoDom, dojoProp, dojoGeometry, dojoClass, dojoStyle, dojoConstruct, dojoArray, dojoLang, dojoText, dojoHtml, dojoEvent, dojoOn, _jQuery, widgetTemplate ) {
+], function (declare, _WidgetBase, _TemplatedMixin, _ , dom, dojoDom, dojoProp, dojoGeometry, dojoClass, dojoStyle, dojoConstruct, dojoArray, dojoLang, dojoText, dojoHtml, dojoEvent, dojoOn, _jQuery, widgetTemplate ) {
   "use strict";
 
   var $ = _jQuery.noConflict(true);
@@ -120,7 +121,7 @@ define([
     },
 
     _changed_jstree: function( e, data ) {
-      logger.debug(this.id + ".changed.jstree");
+      logger.debug(this.id + ".jstree.changed");
 
       var event = data.event;
 
@@ -147,12 +148,13 @@ define([
     },
 
     _load_node_jstree: function( e, data ) {
-      logger.debug(this.id + ".load_node.jstree");
+      logger.debug(this.id + ".jstree.load_node");
       //console.log( '_load_node' );
       this._updateSelectionFromContext();
     },
 
     _treeDataSource: function (node, data_callback ) {
+      logger.debug(this.id + "._treeDataSource");
       // this context is switched to the jsTree here
       if ( node.id == '#' ) {
         var dataMF = this.mfRootData;
@@ -172,10 +174,7 @@ define([
           var newNodes = [];
 
           objs.forEach( function( obj ) {
-            this.subscribe({
-              guid: obj.getGuid(),
-              callback: dojoLang.hitch( this, '_clientRefreshObject'),
-            });
+            this._subscribeObjectRefresh( obj );
 
             newNodes.push( this._buildNodeFromObject( obj ) );
           }, this);
@@ -186,12 +185,32 @@ define([
 
     },
 
+    _subscribeObjectRefresh: function( obj ) {
+      var guid = obj.getGuid();
+      this._handles[ guid ] = this.subscribe({
+        guid: guid,
+        callback: dojoLang.hitch( this, '_clientRefreshObject'),
+      });
+    },
+
+    _unsubscribeObjectRefresh: function( guid ) {
+      var handle = this._handles[ guid ];
+      if ( handle ) {
+        this.unsubscribe( handle );
+        this._handles[ guid ] = undefined;
+      }
+    },
+
     // Called when a client refresh is triggered on a tree node object
     // * reload all children of this node (when open)
     _clientRefreshObject: function( guid ) {
       logger.debug(this.id + ".refresh[guid:"+guid+"]");
       var node = this._jstree.get_node('[objGuid='+guid+']');
-      this._reloadNode( node, this.mfNodeData, node.original.obj );
+      if ( node ) {
+        this._reloadNode( node, this.mfNodeData, node.original.obj );
+      } else {
+        logger.debug(this.id + ".refresh.node-not-mounted[guid:"+guid+"]");
+      }
     },
 
     // Called when a client refreshes the context object
@@ -217,7 +236,7 @@ define([
     },
 
     _reloadNode: function( node, dataMF, nodeObj ) {
-      logger.debug(this.id + ".reloadNode[id:"+ node.id + "]" );
+      logger.debug(this.id + ".reloadNode[id:"+ node.id + "][state: " + JSON.stringify(node.state) + "]" );
 
       if ( node.id != '#' ) {
         this._jstree.rename_node( node, nodeObj.get( this.displayAttribute ) );
@@ -225,7 +244,7 @@ define([
       }
 
       if ( ! node.state.loaded ) {
-        this._jstree.load_node( node );
+        //this._jstree.load_node( node );
       } else {
         // load_node would simply do a hard reload (no clean refresh possible)
         // this._jstree.load_node( node );
@@ -238,6 +257,8 @@ define([
           },
           scope: this.mxform,
           callback: function( reloadedObjs ) {
+            logger.debug(this.id + ".reloadNode.callback.[id:"+ node.id + "]" );
+
             var newGuids = reloadedObjs.map( function(ro) { return ro.getGuid(); }).sort();
             var childNodes = node.children.map( function(childnodeId) { return this._jstree.get_node(childnodeId); }, this);
             var oldGuids = childNodes.map( function(childNode) { return childNode.original.obj.getGuid(); }).sort();
@@ -249,31 +270,23 @@ define([
               if ( newGuids[i] == oldGuids[j] ) {
                 i++; j++;
               } else if ( newGuids[i] < oldGuids[j] ) {
-                var newObj = reloadedObjs.find( function(obj) { return obj.getGuid() == newGuids[i];} );
-                this._jstree.create_node( node, this._buildNodeFromObject( newObj ) );
-                this.subscribe({
-                  guid: newObj.getGuid(),
-                  callback: dojoLang.hitch( this, '_clientRefreshObject'),
-                });
+                var newObj = _.find( reloadedObjs, function(obj) { return obj.getGuid() == newGuids[i];} );
+                this._createOrMoveObjectNode( node, newObj );
                 i++;
               } else {
-                this._jstree.delete_node( '[objGuid='+oldGuids[j]+']');
+                this._deleteObjectNode( oldGuids[j] );
                 j++;
               }
             }
 
             while ( i<newGuids.length ) {
-              var newObj = reloadedObjs.find( function(obj) { return obj.getGuid() == newGuids[i];} );
-              this._jstree.create_node( node, this._buildNodeFromObject( newObj ) );
-              this.subscribe({
-                guid: newObj.getGuid(),
-                callback: dojoLang.hitch( this, '_clientRefreshObject'),
-              });
+              var newObj = _.find( reloadedObjs, function(obj) { return obj.getGuid() == newGuids[i];} );
+              this._createOrMoveObjectNode( node, newObj );
               i++;
             }
 
             while ( j<oldGuids.length ) {
-              this._jstree.delete_node( '[objGuid='+oldGuids[j]+']' );
+              this._deleteObjectNode( oldGuids[j] );
               j++;
             }
 
@@ -284,6 +297,25 @@ define([
           }
         }, this);
       }
+    },
+
+    _createOrMoveObjectNode: function( parentNode, obj ) {
+      logger.debug(this.id + "._createOrMoveObjectNode[guid:"+ obj.getGuid() + "]" );
+      // when a node is moved it may still exist in the tree
+      var movedNode = this._jstree.get_node('[objGuid=' + obj.getGuid() + ']');
+      if ( moveNode ) {
+        // this will be handled by the move_node in reorder
+        //this._jstree.move_node( moveNode, parentNode );
+      } else {
+        this._jstree.create_node( parentNode, this._buildNodeFromObject( obj ) );
+        this._subscribeObjectRefresh( obj );
+      }
+    },
+
+    _deleteObjectNode: function( guid ) {
+      logger.debug(this.id + "._deleteObjectNode[guid:"+ guid + "]" );
+      this._jstree.delete_node( '[objGuid='+guid+']' );
+      this._unsubscribeObjectRefresh( guid );
     },
 
     // Create node object from MxObject using configured attributes
