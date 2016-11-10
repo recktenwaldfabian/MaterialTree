@@ -2447,14 +2447,38 @@
 					node.childNodes[1].childNodes[0].style.backgroundPosition = 'center center';
 					node.childNodes[1].childNodes[0].style.backgroundSize = 'cover';
 					node.childNodes[1].childNodes[0].className += ' jstree-themeicon-custom';
+					if ( this.get_type( obj ) ) {
+						t = this.settings.types[ this.get_type( obj ) ];
+						node.childNodes[1].childNodes[0].setAttribute('title', t.title );
+					}
 				}
 			}
 
-			if(this.settings.core.force_text) {
-				node.childNodes[1].appendChild(d.createTextNode(obj.text));
-			}
-			else {
-				node.childNodes[1].innerHTML += obj.text;
+			if ( typeof obj.text == 'string' ) {
+				if(this.settings.core.force_text) {
+					node.childNodes[1].appendChild(d.createTextNode(obj.text));
+				}
+				else {
+					node.childNodes[1].innerHTML += obj.text;
+				}
+			} else if ( Array.prototype.isPrototypeOf( obj.text ) ){
+				for ( var i=0; i<obj.text.length; i++  ) {
+					var field = obj.text[i];
+					if ( field.icon ) {
+						var icon = document.createElement('I');
+						icon.style.backgroundImage = 'url("'+field.icon+'")';
+						icon.style.backgroundPosition = 'center center';
+						icon.style.backgroundSize = 'cover';
+						icon.className += ' jstree-themeicon-custom';
+						icon.className = 'jstree-icon jstree-themeicon';
+						icon.setAttribute('role', 'presentation');
+						icon.setAttribute('title', field.title );
+						node.childNodes[1].appendChild( icon ) ;
+					} else if ( field.text ) {
+						node.childNodes[1].appendChild(d.createTextNode(field.text));
+					}
+				}
+				// add the option for complex entry definitions
 			}
 
 

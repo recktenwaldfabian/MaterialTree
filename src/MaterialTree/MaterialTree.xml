@@ -23,14 +23,7 @@
             <description>Microflow called to fetch entries on subnodes.</description>
             <returnType type="Object" isList="true" entityProperty="treeEntity" />
         </property>
-        <property key="displayAttribute" type="attribute" required="true" entityProperty="treeEntity">
-            <caption>Display text</caption>
-            <category>Data</category>
-            <description>Attribute displayed for a node.</description>
-            <attributeTypes>
-              <attributeType name="String" />
-            </attributeTypes>
-        </property>
+
         <property key="expandableAttribute" type="attribute" required="true" entityProperty="treeEntity">
             <caption>Expandable attribute</caption>
             <category>Data</category>
@@ -72,6 +65,24 @@
             </attributeTypes>
         </property>
 
+        <property key="displayAttribute" type="attribute" required="false" entityProperty="treeEntity">
+            <caption>Display text</caption>
+            <category>Display</category>
+            <description>Attribute displayed for a node.</description>
+            <attributeTypes>
+              <attributeType name="String" />
+            </attributeTypes>
+        </property>
+
+        <property key="displayAttributeJSON" type="attribute" required="false" entityProperty="treeEntity">
+            <caption>Display Data</caption>
+            <category>Display</category>
+            <description>Instead of text send a JSON array of entries to be shown</description>
+            <attributeTypes>
+              <attributeType name="String" />
+            </attributeTypes>
+        </property>
+
         <property key="typeMapping" type="object" isList="true" required="false">
           <caption>Type Mapping</caption>
           <category>Display</category>
@@ -86,6 +97,11 @@
               <caption>Icon</caption>
               <category>Display</category>
               <description>Icon to be displayed for this type.</description>
+            </property>
+            <property key="title" type="translatableString" required="false">
+              <caption>Title</caption>
+              <category>Display</category>
+              <description>Title shown when hovering (tooltip)</description>
             </property>
           </properties>
         </property>

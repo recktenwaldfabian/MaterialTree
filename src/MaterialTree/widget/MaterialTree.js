@@ -57,6 +57,17 @@ define([
     selectionReference: '', // path to selected entry
 
     displayAttribute: "", // attribute containing the text displayed in a node
+    displayAttributeJSON: "", // if this is set, the given attribute must contain a JSON array of data entries
+    // the format of this array is [ entry, entry ...] where
+    // entry = { "type" : "sometype" } // display icon of references type
+    // or
+    // entry = { "text" : "sometext" } // display some text
+    // where "sometype" refers to the types defined in typemaaing
+
+    // example
+    // [ { "type" : "question"}, { "text" : "what do you want" }, { "type" : "smile" } ]
+
+
     expandableAttribute: "", // determines if a node can be expanded (has children)
     openedAttribute: "", // determines if a node is initially open
 
@@ -69,6 +80,7 @@ define([
     _handles: null,
     _contextObj: null,
     _jstree: null,
+    _treeTypeMapping: null,
 
     // dojo.declare.constructor is called to construct the widget instance. Implement to initialize non-primitive properties.
     constructor: function () {
@@ -92,12 +104,13 @@ define([
         callback: dojoLang.hitch( this, '_clientRefreshContext'),
       });
 
-      var treeTypeMapping = {};
-      this.typeMapping.forEach( function( map ) {
-        treeTypeMapping[ map.type ] = {
-          'icon' : './'+map.icon
+      this._treeTypeMapping = {};
+      this.typeMapping.forEach( function( mapentry ) {
+        this._treeTypeMapping[ mapentry.type ] = {
+          'icon' : './'+mapentry.icon,
+          'title' : mapentry.title
         };
-      });
+      }, this);
 
       this._jstree = $(this.domNode).jstree({
         'core' : {
@@ -108,7 +121,7 @@ define([
             return true;
           },
         },
-        'types' : treeTypeMapping,
+        'types' : this._treeTypeMapping,
         'plugins' : [ 'types' ]
 
       }).on( 'changed.jstree', dojoLang.hitch( this, '_changed_jstree') )
@@ -239,7 +252,7 @@ define([
       logger.debug(this.id + ".reloadNode[id:"+ node.id + "][state: " + JSON.stringify(node.state) + "]" );
 
       if ( node.id != '#' ) {
-        this._jstree.rename_node( node, nodeObj.get( this.displayAttribute ) );
+        this._jstree.rename_node( node, this._getNodeText( nodeObj ) );
         this._jstree.set_type( node, nodeObj.get( this.typeAttribute ) );
       }
 
@@ -301,9 +314,11 @@ define([
 
     _createOrMoveObjectNode: function( parentNode, obj ) {
       logger.debug(this.id + "._createOrMoveObjectNode[guid:"+ obj.getGuid() + "]" );
-      // when a node is moved it may still exist in the tree
+
+      // when a node was moved from a different position in the tree
+      // the node may still exist and is moved from there instead of recreating
       var movedNode = this._jstree.get_node('[objGuid=' + obj.getGuid() + ']');
-      if ( moveNode ) {
+      if ( movedNode ) {
         // this will be handled by the move_node in reorder
         //this._jstree.move_node( moveNode, parentNode );
       } else {
@@ -322,7 +337,7 @@ define([
     _buildNodeFromObject: function( obj ) {
       var nodeConfig = {
 //        id: obj.getGuid(),
-        text: obj.get( this.displayAttribute ),
+        text: this._getNodeText( obj ),
         children: obj.get( this.expandableAttribute ) ? true : [],
         obj: obj,
         state: {
@@ -333,6 +348,23 @@ define([
       };
 
       return nodeConfig;
+    },
+
+    _getNodeText: function( obj ) {
+      if ( this.displayAttributeJSON) {
+        return JSON.parse( obj.get( this.displayAttributeJSON ) ).map( function( entry ) {
+          if ( entry.type ) {
+            return this._treeTypeMapping[ entry.type ];
+          } else {
+            return entry;
+          }
+        }, this);;
+      } else if ( this.displayAttribute ) {
+        // just return the text. This may also contain html
+        return obj.get( this.displayAttribute );
+      } else {
+        return '<empty>';
+      }
     },
 
     // mxui.widget._WidgetBase.uninitialize is called when the widget is destroyed. Implement to do special tear-down work.
