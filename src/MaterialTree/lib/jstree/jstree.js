@@ -2469,9 +2469,7 @@
 						icon.style.backgroundImage = 'url("'+field.icon+'")';
 						icon.style.backgroundPosition = 'center center';
 						icon.style.backgroundSize = 'cover';
-						icon.className += ' jstree-themeicon-custom';
-						icon.className = 'jstree-icon jstree-themeicon';
-						icon.setAttribute('role', 'presentation');
+						icon.className = 'jstree-icon';
 						icon.setAttribute('title', field.title );
 						node.childNodes[1].appendChild( icon ) ;
 					} else if ( field.text ) {
