@@ -271,6 +271,9 @@ define([
           scope: this.mxform,
           callback: function( reloadedObjs ) {
             logger.debug(this.id + ".reloadNode.callback.[id:"+ node.id + "]" );
+            if (! reloadedObjs ) {
+              reloadedObjs = [];
+            }
 
             var newGuids = reloadedObjs.map( function(ro) { return ro.getGuid(); }).sort();
             var childNodes = node.children.map( function(childnodeId) { return this._jstree.get_node(childnodeId); }, this);
@@ -354,7 +357,12 @@ define([
       if ( this.displayAttributeJSON) {
         return JSON.parse( obj.get( this.displayAttributeJSON ) ).map( function( entry ) {
           if ( entry.type ) {
-            return this._treeTypeMapping[ entry.type ];
+            var typeEntry = this._treeTypeMapping[ entry.type ]
+            if ( typeEntry ) {
+              return typeEntry;
+            } else {
+              return { text: '['+entry.type+']'};
+            }
           } else {
             return entry;
           }
