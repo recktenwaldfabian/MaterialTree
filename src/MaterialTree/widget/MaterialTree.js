@@ -359,7 +359,7 @@ define([
           if ( entry.type ) {
             var typeEntry = this._treeTypeMapping[ entry.type ]
             if ( typeEntry ) {
-              return typeEntry;
+              return _.extend( {}, entry, typeEntry );
             } else {
               return { text: '['+entry.type+']'};
             }

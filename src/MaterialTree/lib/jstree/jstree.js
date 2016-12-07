@@ -2464,16 +2464,20 @@
 			} else if ( Array.prototype.isPrototypeOf( obj.text ) ){
 				for ( var i=0; i<obj.text.length; i++  ) {
 					var field = obj.text[i];
+					var fieldClass = field.class ? field.class : '';
 					if ( field.icon ) {
 						var icon = document.createElement('I');
 						icon.style.backgroundImage = 'url("'+field.icon+'")';
 						icon.style.backgroundPosition = 'center center';
 						icon.style.backgroundSize = 'cover';
-						icon.className = 'jstree-icon';
+						icon.className = 'jstree-icon jstree-icon-entry '+fieldClass;
 						icon.setAttribute('title', field.title );
 						node.childNodes[1].appendChild( icon ) ;
 					} else if ( field.text ) {
-						node.childNodes[1].appendChild(d.createTextNode(field.text));
+						var textNode = document.createElement('I');
+						textNode.appendChild(d.createTextNode(field.text));
+						textNode.className = 'jstree-text ' + fieldClass;
+						node.childNodes[1].appendChild(textNode);
 					}
 				}
 				// add the option for complex entry definitions
