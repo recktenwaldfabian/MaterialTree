@@ -2474,7 +2474,7 @@
 						icon.setAttribute('title', field.title );
 						node.childNodes[1].appendChild( icon ) ;
 					} else if ( field.text ) {
-						var textNode = document.createElement('I');
+						var textNode = document.createElement('SPAN');
 						textNode.appendChild(d.createTextNode(field.text));
 						textNode.className = 'jstree-text ' + fieldClass;
 						node.childNodes[1].appendChild(textNode);
