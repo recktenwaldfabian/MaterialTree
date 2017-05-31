@@ -58,6 +58,7 @@ define([
 
     displayAttribute: "", // attribute containing the text displayed in a node
     displayAttributeJSON: "", // if this is set, the given attribute must contain a JSON array of data entries
+    mfDisplayJSON: "",
     // the format of this array is [ entry, entry ...] where
     // entry = { "type" : "sometype" } // display icon of references type
     // or
@@ -186,13 +187,35 @@ define([
         callback: function( objs ) {
           var newNodes = [];
 
-          objs.forEach( function( obj ) {
-            this._subscribeObjectRefresh( obj );
+          if ( this.mfDisplayJSON ) {
+            var objsCount = objs.length;
+            objs.forEach( function( obj ) {
+              mx.ui.action( this.mfDisplayJSON, {
+                params: {
+                  applyto: "selection",
+                  guids: [ obj.getGuid() ]
+                },
+                scope: this.mxform,
+                callback: function( jsonText ) {
+                  this._subscribeObjectRefresh( obj );
+                  newNodes.push( this._buildNodeFromObject( obj, this._parseJsonText( jsonText ) ) );
+                  objsCount = objsCount - 1;
+                  if ( objsCount == 0 ) {
+                    data_callback.call( this._jstree, newNodes );
+                  }
+                }
+              }, this);
+            }, this);
 
-            newNodes.push( this._buildNodeFromObject( obj ) );
-          }, this);
+          } else {
+            objs.forEach( function( obj ) {
+              this._subscribeObjectRefresh( obj );
 
-          data_callback.call( this._jstree, newNodes );
+              newNodes.push( this._buildNodeFromObject( obj, this._getNodeText( obj ) ) );
+            }, this);
+
+            data_callback.call( this._jstree, newNodes );
+          }
         }
       }, this );
 
@@ -325,7 +348,7 @@ define([
         // this will be handled by the move_node in reorder
         //this._jstree.move_node( moveNode, parentNode );
       } else {
-        this._jstree.create_node( parentNode, this._buildNodeFromObject( obj ) );
+        this._createNewNode( obj );
         this._subscribeObjectRefresh( obj );
       }
     },
@@ -336,11 +359,28 @@ define([
       this._unsubscribeObjectRefresh( guid );
     },
 
+    _createNewNode: function( obj ) {
+      if ( this.mfDisplayJSON ) {
+        mx.ui.action( this.mfDisplayJSON, {
+          params: {
+            applyto: "selection",
+            guids: [ obj.getGuid() ]
+          },
+          scope: this.mxform,
+          callback: function( jsonText ) {
+            this._jstree.create_node( parentNode, this._buildNodeFromObject( obj, this._parseJsonText( jsonText ) ) );
+          }
+        }, this);
+      } else {
+        this._jstree.create_node( parentNode, this._buildNodeFromObject( obj, this._getNodeText( obj ) ) );
+      }
+    },
+
     // Create node object from MxObject using configured attributes
-    _buildNodeFromObject: function( obj ) {
+    _buildNodeFromObject: function( obj, nodeText ) {
       var nodeConfig = {
 //        id: obj.getGuid(),
-        text: this._getNodeText( obj ),
+        text: nodeText,
         children: obj.get( this.expandableAttribute ) ? true : [],
         obj: obj,
         state: {
@@ -353,20 +393,31 @@ define([
       return nodeConfig;
     },
 
+    _parseJsonText: function( jsonString ) {
+      return JSON.parse( jsonString ).map( function( entry ) {
+        if ( entry.type ) {
+          var typeEntry = this._treeTypeMapping[ entry.type ]
+          if ( typeEntry ) {
+            return _.extend( {}, entry, typeEntry );
+          } else {
+            return { text: '['+entry.type+']'};
+          }
+        } else {
+          return entry;
+        }
+      }, this);
+    },
+
     _getNodeText: function( obj ) {
       if ( this.displayAttributeJSON) {
-        return JSON.parse( obj.get( this.displayAttributeJSON ) ).map( function( entry ) {
-          if ( entry.type ) {
-            var typeEntry = this._treeTypeMapping[ entry.type ]
-            if ( typeEntry ) {
-              return _.extend( {}, entry, typeEntry );
-            } else {
-              return { text: '['+entry.type+']'};
-            }
-          } else {
-            return entry;
-          }
-        }, this);;
+        return this._parseJsonText( obj.get( this.displayAttributeJSON ) );
+      } else if ( this.mfDisplayJSON ) {
+        //must be retrieves asynchronous
+        if ( this.displayAttribute ) {
+          // just return the text if provided
+          return obj.get( this.displayAttribute );
+        }
+        return '';
       } else if ( this.displayAttribute ) {
         // just return the text. This may also contain html
         return obj.get( this.displayAttribute );

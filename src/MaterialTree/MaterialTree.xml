@@ -83,6 +83,13 @@
             </attributeTypes>
         </property>
 
+        <property key="mfDisplayJSON" type="microflow" required="false" entityProperty="treeEntity">
+            <caption>Display Microflow</caption>
+            <category>Display</category>
+            <description>retrieve the display JSON via microflow</description>
+            <returnType type="String" />
+        </property>
+
         <property key="typeMapping" type="object" isList="true" required="false">
           <caption>Type Mapping</caption>
           <category>Display</category>
