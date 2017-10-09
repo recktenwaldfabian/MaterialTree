@@ -6,89 +6,74 @@
     <icon />
 
     <properties>
-        <property key="treeEntity" type="entity" allowNonPersistableEntities="true">
-            <caption>Tree Entity</caption>
-            <category>Data</category>
+        <property key="treeNode" type="entity" required="true">
+            <caption>Node</caption>
+            <category>Entities</category>
             <description>Entity containing tree node data.</description>
         </property>
-        <property key="mfRootData" type="microflow" required="true">
-            <caption>Root Data Microflow</caption>
-            <category>Data</category>
-            <description>Microflow called to fetch the top level tree entries.</description>
-            <returnType type="Object" isList="true" entityProperty="treeEntity" />
+        <property key="treeEdge" type="entity" required="true">
+            <caption>Edge</caption>
+            <category>Entities</category>
+            <description>Entity containing tree node data.</description>
         </property>
-        <property key="mfNodeData" type="microflow" required="true" entityProperty="treeEntity">
-            <caption>Node Data Microflow</caption>
-            <category>Data</category>
-            <description>Microflow called to fetch entries on subnodes.</description>
-            <returnType type="Object" isList="true" entityProperty="treeEntity" />
+        <property key="treeStatus" type="entity" required="true">
+            <caption>Status</caption>
+            <category>Entities</category>
+            <description>Status for a Node.</description>
+        </property>
+        
+
+        <property key="rootNodeRef" type="entity" required="true" isPath="optional" pathType="reference" allowNonPersistableEntities="true">
+            <caption>Context Root</caption>
+            <category>Entities</category>
+            <description>Association to root node from Context.</description>
+        </property>
+        <property key="treeEdgeParentRef" type="entity" required="true" isPath="optional" pathType="reference" entityProperty="treeEdge">
+            <caption>Edge Parent</caption>
+            <category>Entities</category>
+            <description>Association to parent node from Edge.</description>
+        </property>
+        <property key="treeEdgeChildRef" type="entity" required="true" isPath="optional" pathType="reference" entityProperty="treeEdge">
+            <caption>Edge Child</caption>
+            <category>Entities</category>
+            <description>Association to child node from Edge.</description>
+        </property>
+        <property key="treeStatusRef" type="entity" required="true" isPath="optional" pathType="reference" entityProperty="treeStatus">
+            <caption>Status Association</caption>
+            <category>Entities</category>
+            <description>Association from Status to Node.</description>
+        </property>
+        <property key="treeStatusConstrainedRef" type="entity" required="true" isPath="optional" pathType="reference" entityProperty="treeStatus">
+            <caption>Status Constrained</caption>
+            <category>Entities</category>
+            <description>Use this to filter the shown Status based on the context.</description>
+        </property>
+        <property key="treeStatusFilterRef" type="entity" required="true" isPath="optional" pathType="reference" allowNonPersistableEntities="true">
+            <caption>Status Filter</caption>
+            <category>Entities</category>
+            <description>Use this to filter the shown Status based on the context.</description>
         </property>
 
-        <property key="expandableAttribute" type="attribute" required="true" entityProperty="treeEntity">
-            <caption>Expandable attribute</caption>
-            <category>Data</category>
-            <description>For an expandable node, the tree can be expanded on click</description>
+
+        <property key="nodeHasChildrenAttribute" type="attribute" required="true" entityProperty="treeNode">
+            <caption>has children (Node)</caption>
+            <category>Attributes</category>
+            <description>Boolean determining if a Node has children.</description>
             <attributeTypes>
               <attributeType name="Boolean" />
             </attributeTypes>
         </property>
-        <property key="openedAttribute" type="attribute" required="false" entityProperty="treeEntity">
-            <caption>Opened attribute</caption>
-            <category>Data</category>
-            <description>If configured, this will set the initial node opened state.</description>
-            <attributeTypes>
-              <attributeType name="Boolean" />
-            </attributeTypes>
-        </property>
-        <property key="selectionReference" type="entity" isPath="yes" pathType="reference" required="false" allowNonPersistableEntities="true">
-            <caption>Selection Reference</caption>
-            <category>Data</category>
-            <description>Reference to a Tree Entity which is shown as selected</description>
-        </property>
 
-
-        <property key="mfOnChange" type="microflow" required="false" entityProperty="treeEntity">
-            <caption>Onchange Microflow</caption>
-            <category>Interaction</category>
-            <description>Triggered when the selected node changes.</description>
-            <returnType type="Void" />
-        </property>
-
-
-        <property key="typeAttribute" type="attribute" required="false" entityProperty="treeEntity">
-            <caption>Type attribute</caption>
-            <category>Display</category>
-            <description>Used in mapping entry types to icons.</description>
+        <property key="nodeTypeAttribute" type="attribute" required="false" entityProperty="treeNode">
+            <caption>Type (Node)</caption>
+            <category>Attributes</category>
+            <description>Used for showing node icons.</description>
             <attributeTypes>
               <attributeType name="String" />
               <attributeType name="Enum" />
             </attributeTypes>
         </property>
-
-        <property key="displayAttribute" type="attribute" required="false" entityProperty="treeEntity">
-            <caption>Display text</caption>
-            <category>Display</category>
-            <description>Attribute displayed for a node.</description>
-            <attributeTypes>
-              <attributeType name="String" />
-            </attributeTypes>
-        </property>
-
-        <property key="displayAttributeJSON" type="attribute" required="false" entityProperty="treeEntity">
-            <caption>Display Data</caption>
-            <category>Display</category>
-            <description>Instead of text send a JSON array of entries to be shown</description>
-            <attributeTypes>
-              <attributeType name="String" />
-            </attributeTypes>
-        </property>
-
-        <property key="mfDisplayJSON" type="microflow" required="false" entityProperty="treeEntity">
-            <caption>Display Microflow</caption>
-            <category>Display</category>
-            <description>retrieve the display JSON via microflow</description>
-            <returnType type="String" />
-        </property>
+     
 
         <property key="typeMapping" type="object" isList="true" required="false">
           <caption>Type Mapping</caption>
@@ -112,6 +97,5 @@
             </property>
           </properties>
         </property>
-
     </properties>
 </widget>

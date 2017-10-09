@@ -50,32 +50,24 @@ define([
     templateString: widgetTemplate,
 
     // Parameters configured in the Modeler.
-    mfRootData: "", // microflow providing the first tree level; receives context object
-    mfNodeData: "", // microflow providing children of a node; receives the parent node object
+    treeNode: "", // entity containing node data
+    treeEdge: "", // entity containing edge data
+    treeStatus: "", // entity containing filterable status for nodes
 
-    treeEntity: '', // entity used for tree nodes
-    selectionReference: '', // path to selected entry
+    rootNodeRef: '', // path from context to root Node
+    treeEdgeParentRef: '', // path from edge to parent Node
+    treeEdgeChildRef: '', // path from edge to child Node
+    treeStatusRef: '', // association from status to node
 
-    displayAttribute: "", // attribute containing the text displayed in a node
-    displayAttributeJSON: "", // if this is set, the given attribute must contain a JSON array of data entries
-    mfDisplayJSON: "",
-    // the format of this array is [ entry, entry ...] where
-    // entry = { "type" : "sometype" } // display icon of references type
-    // or
-    // entry = { "text" : "sometext" } // display some text
-    // where "sometype" refers to the types defined in typemaaing
+    treeStatusConstrainedRef: '', // association from status to a contrained entity
+    treeStatusFilterRef: '', // association from context to a constrained entity
+    // Note: the widget uses only the Status where the constrained set by treeStatusFilterRef matches
+    //       the Constrained from treeStatusConstrainedRef in the Status
 
-    // example
-    // [ { "type" : "question"}, { "text" : "what do you want" }, { "type" : "smile" } ]
+    nodeHasChildrenAttribute: '', // attribute of <treeNode>, determines if node has children
+    nodeTypeAttribute: '', // determines the primary icon to be shown for the node
 
-
-    expandableAttribute: "", // determines if a node can be expanded (has children)
-    openedAttribute: "", // determines if a node is initially open
-
-    mfOnChange: "", // microflow triggered when a node is selected
-
-    typeAttribute: "", //
-    typeMapping: "", //
+    typeMapping: '', // mapping from type strings to icons and translated labels
 
     // Internal variables. Non-primitives created in the prototype are shared between all widget instances.
     _handles: null,
@@ -99,11 +91,20 @@ define([
       logger.debug(this.id + ".update");
 
       this._contextObj = obj;
-
+      
       this.subscribe({
         guid: this._contextObj.getGuid(),
-        callback: dojoLang.hitch( this, '_clientRefreshContext'),
-      });
+        callback: function() {
+          this._refreshNodeTexts();
+        }
+      }, this);      
+      this.subscribe({
+        guid: this._contextObj.getGuid(),
+        attr: this.treeStatusFilterRef.split('/')[0],
+        callback: function() {
+          this._refreshNodeTexts();
+        }
+      }, this);
 
       this._treeTypeMapping = {};
       this.typeMapping.forEach( function( mapentry ) {
@@ -131,9 +132,10 @@ define([
       this._jstree = $(this.domNode).jstree(true);
 
       //this._resetSubscriptions();
-      mendix.lang.nullExec(update_callback);
+      if (update_callback) update_callback();
     },
 
+    // this function handles selections in the tree
     _changed_jstree: function( e, data ) {
       logger.debug(this.id + ".jstree.changed");
 
@@ -167,65 +169,225 @@ define([
       this._updateSelectionFromContext();
     },
 
+    // ----
+    // this is the initial data source entry point when loading the children of a node
+    // ----
     _treeDataSource: function (node, data_callback ) {
       logger.debug(this.id + "._treeDataSource");
-      // this context is switched to the jsTree here
+      
       if ( node.id == '#' ) {
-        var dataMF = this.mfRootData;
-        var nodeObj = this._contextObj;
-      } else {
-        var dataMF = this.mfNodeData;
-        var nodeObj = node.original.obj;
-      }
+        // the root node is retrieved from the context
+        var loadRoot = this._loadRootNode();
 
-      mx.ui.action( dataMF, {
-        params: {
-          applyto: "selection",
-          guids: [ nodeObj.getGuid() ]
-        },
-        origin: this.mxform,
-        callback: function( objs ) {
+        // load status list from root
+        var loadStatusList = loadRoot.then( function(nodeObj) {
+          return this._loadStatus( nodeObj );
+        }.bind(this));
+
+        // build root node
+        Promise.all( [loadRoot, loadStatusList] ).then( function( results ){
+          var nodeObj = results[0];
+          var statusList = results[1];          
+          data_callback.call( this._jstree, [ this._buildNode(null, nodeObj, statusList) ] );
+          this._subscribeRefresh( null, nodeObj, statusList );
+        }.bind(this));
+
+      } else {
+        // other child nodes are retrieved via XPATH from the parent node
+        var parentNodeObj = node.original.nodeObj;
+
+        // Load all child node data (edges, nodes, status)
+        Promise.all([
+          this._loadChildEdges( parentNodeObj ),
+          this._loadChildNodes( parentNodeObj ),
+          this._loadChildStatus( parentNodeObj )
+        ]).then(function(arrayOfResults) {
+          var edges = arrayOfResults[0];
+          var nodes = arrayOfResults[1];
+          var statusListAll = arrayOfResults[2];
+          
           var newNodes = [];
 
-          if ( this.mfDisplayJSON ) {
-            var objsCount = objs.length;
-            objs.forEach( function( obj ) {
-              mx.ui.action( this.mfDisplayJSON, {
-                params: {
-                  applyto: "selection",
-                  guids: [ obj.getGuid() ]
-                },
-                scope: this.mxform,
-                callback: function( jsonText ) {
-                  this._subscribeObjectRefresh( obj );
-                  newNodes.push( this._buildNodeFromObject( obj, this._parseJsonText( jsonText ) ) );
-                  objsCount = objsCount - 1;
-                  if ( objsCount == 0 ) {
-                    data_callback.call( this._jstree, newNodes );
-                  }
-                }
-              }, this);
-            }, this);
+          this._mapEdgesAndNodes( edges, nodes, statusListAll, function( edgeObj, nodeObj, statusList) {
+            newNodes.push( this._buildNode( edgeObj, nodeObj, statusList) );
+            this._subscribeRefresh( edgeObj, nodeObj, statusList );
+          });
 
-          } else {
-            objs.forEach( function( obj ) {
-              this._subscribeObjectRefresh( obj );
-
-              newNodes.push( this._buildNodeFromObject( obj, this._getNodeText( obj ) ) );
-            }, this);
-
-            data_callback.call( this._jstree, newNodes );
-          }
-        }
-      }, this );
-
+          data_callback.call( this, newNodes);
+        }.bind(this) );
+      }
     },
 
-    _subscribeObjectRefresh: function( obj ) {
+    // iterate over edges, find matching node and statusList and call callback with matched data
+    _mapEdgesAndNodes: function( edges, nodes, statusListAll, callback ) {
+      edges.forEach( function(edgeObj) {
+        // find the child node for each edge
+        var edgeChildGuid = edgeObj.get(this.treeEdgeChildRef.split('/')[0]);          
+        
+        // match nodes with edges
+        var nodeObj = nodes.find( function(obj){
+          return obj.getGuid() == edgeChildGuid;
+        }, this);
+
+        // match statusList with edges
+        var statusList = statusListAll.filter( function(obj){
+          return obj.get( this.treeStatusRef.split('/')[0] ) == nodeObj.getGuid();
+        }, this);
+
+        callback.call(this, edgeObj, nodeObj, statusList );
+      }, this );
+    },
+
+    // load the root node from the context
+    _loadRootNode: function() {
+      return new Promise( function(resolve,reject){
+        mx.data.get({
+          guid: this._contextObj.getGuid(),
+          path: this.rootNodeRef.split('/')[0],
+          callback: function( objs ) {
+            var nodeObj = objs[0]; //<- should always only return a single object
+            if ( nodeObj ) {
+              resolve( nodeObj );
+            } else {
+              reject( 'No root node set in context');
+            }
+          },
+          error: function( error ) {
+            reject( error );
+          }
+        },this);
+      }.bind(this));
+    },
+
+    _loadGuid: function( guid ) {
+      return new Promise( function( resolve,reject){
+        mx.data.get({
+          guid: guid,
+          callback: function( obj ) {
+            if (obj) {
+              resolve( obj );
+            } else {
+              reject( 'object with guid not found: ' + guid );
+            }
+          },
+          error: function( error ) {
+            reject( error );
+          }
+        },this);
+      }.bind(this));
+    },
+
+    // return a Promise for retrieving an entity with an xpathConstraint
+    _loadXPath: function( entity, xpathConstraint ) {
+      return new Promise( function(resolve, reject) {
+        mx.data.get({
+          // retrieve the child edges from the parent nodeObj
+          xpath: '//'+entity+'['+xpathConstraint+']',
+          callback: function( edges ) {
+            resolve( edges );
+          },
+          error: function( error ) {
+            reject( error );
+          }
+        }, this);
+      }.bind(this));
+    },
+
+    // retrieve all child edges of a node
+    _loadChildEdges: function( parentNodeObj ) {
+      var xpathConstraint = this.treeEdgeParentRef.split('/')[0] +
+      '=' + parentNodeObj.getGuid() ;
+      return this._loadXPath( this.treeEdge, xpathConstraint );
+    },
+
+    // retrieve all child nodes of a node
+    _loadChildNodes: function( parentNodeObj ) {
+      var xpathConstraint = this.treeEdgeChildRef.split('/')[0] +
+      '/' + this.treeEdge +
+      '/' + this.treeEdgeParentRef.split('/')[0] +
+      '=' + parentNodeObj.getGuid() ;
+      return this._loadXPath( this.treeNode, xpathConstraint );
+    },
+
+    // retrieve all status of all child nodes of a node
+    _loadChildStatus: function( parentNodeObj ) {
+      var xpathConstraint = this.treeStatusRef.split('/')[0] + 
+      '/' + this.treeNode +
+      '/' + this.treeEdgeChildRef.split('/')[0] +
+      '/' + this.treeEdge +
+      '/' + this.treeEdgeParentRef.split('/')[0] +
+      '=' + parentNodeObj.getGuid() ;
+      return this._loadXPath( this.treeStatus, xpathConstraint );
+    },
+
+    // retrieve all status of a node
+    _loadStatus: function( nodeObj ) {
+      var xpathConstraint = this.treeStatusRef.split('/')[0] + 
+      '=' + nodeObj.getGuid() ;
+      return this._loadXPath( this.treeStatus, xpathConstraint );
+    },
+
+    // Subscribe for changes in all objects that are attached to a jsTreeNode
+    _subscribeRefresh: function( edgeObj, nodeObj, statusList ) {
+      if ( edgeObj ) {
+        this._subscribeEdgeRefresh( edgeObj );            
+      }
+      this._subscribeNodeRefresh( nodeObj );
+      statusList.forEach( function(statusObj) {
+        this.subscribeStatusRefresh( statusObj );
+      }, this );
+    },
+
+    _subscribeNodeRefresh: function( nodeObj ) {
+      this._subscribeObjectRefresh( nodeObj, function( guid ){
+        this._loadGuid( guid).then( function(obj) {
+          this._jsTreeNodes().filter( function(node) {
+            return node.original && node.original.nodeObj && node.original.nodeObj.getGuid() == guid;
+          }).forEach( function( node ) {
+            node.original.nodeObj = obj;
+            this._refreshNodeText( node );
+          },this)
+        }.bind(this))
+      })
+    },
+
+    _subscribeEdgeRefresh: function( edgeObj ) {
+      this._subscribeObjectRefresh( edgeObj, function( guid ){
+        this._loadGuid( guid).then( function(obj) {
+          this._jsTreeNodes().filter( function(node) {
+            return node.original && node.original.edgeObj && node.original.edgeObj.getGuid() == guid;
+          }).forEach( function( node ) {
+            node.original.edgeObj = obj;
+            this._refreshNodeText( node );
+          },this)
+        }.bind(this))
+      })
+    },
+
+    subscribeStatusRefresh: function( statusObj ) {
+      this._subscribeObjectRefresh( statusObj, function( guid ){
+        this._loadGuid( guid).then( function(obj) {
+          var nodeGuid = obj.get( this.treeStatusRef.split('/')[0] );
+          this._jsTreeNodes().filter( function(node) {
+            return node.original && node.original.nodeObj && node.original.nodeObj.getGuid() == nodeGuid;
+          }).forEach( function( node ) {
+            node.original.statusList.forEach( function(status, i) {
+              if ( status.getGuid() == guid ) {
+                node.original.statusList[i] = obj;
+              }
+            });
+            node.original.statusList.push( obj );
+            this._refreshNodeText( node );
+          },this)
+        }.bind(this))
+      })
+    },
+
+    _subscribeObjectRefresh: function( obj, callback ) {
       var guid = obj.getGuid();
       this._handles[ guid ] = this.subscribe({
         guid: guid,
-        callback: dojoLang.hitch( this, '_clientRefreshObject'),
+        callback: callback.bind(this),
       });
     },
 
@@ -237,13 +399,32 @@ define([
       }
     },
 
+    // recreate all node texts in the tree
+    _refreshNodeTexts: function() {
+      this._jsTreeNodes().forEach( function( node ) {
+        if ( node.id != '#' ) {
+          this._jstree.rename_node( node, this._buildNodeText( node.original.edgeObj, node.original.nodeObj, node.original.statusList ) );
+        }
+      }, this );
+    },
+
+    _refreshNodeText: function( node ) {
+      this._jstree.rename_node( node, this._buildNodeText( node.original.edgeObj, node.original.nodeObj, node.original.statusList ) );
+    },
+
+    _jsTreeNodes: function() {
+      var modelData = this._jstree._model.data;
+      return Object.keys( modelData ).map( function( key ) { return modelData[key]; });
+    },
+
     // Called when a client refresh is triggered on a tree node object
     // * reload all children of this node (when open)
     _clientRefreshObject: function( guid ) {
       logger.debug(this.id + ".refresh[guid:"+guid+"]");
-      var node = this._jstree.get_node('[objGuid='+guid+']');
+
+      var node = this._jstree.get_node('[nodeGuid='+guid+']');
       if ( node ) {
-        this._reloadNode( node, this.mfNodeData, node.original.obj );
+        this._reloadNode( node );
       } else {
         logger.debug(this.id + ".refresh.node-not-mounted[guid:"+guid+"]");
       }
@@ -252,11 +433,14 @@ define([
     // Called when a client refreshes the context object
     _clientRefreshContext: function( guid ) {
       logger.debug(this.id + ".refresh.context[guid:"+guid+"]");
-      var node = this._jstree.get_node('#');
-      this._reloadNode( node, this.mfRootData, this._contextObj );
 
-      //console.log( 'refresh context' );
-      this._updateSelectionFromContext();
+      var node = this._jstree.get_node('#');
+      // this._reloadNode( node );
+
+      // when the context object is updated trigger a full tree name refresh
+      this._refreshNodeTexts();
+
+      //this._updateSelectionFromContext();
     },
 
     _updateSelectionFromContext: function() {
@@ -266,17 +450,19 @@ define([
         var referenceGuid = this._contextObj.getReference( this.selectionReference.split('/')[0] );
         this._jstree.deselect_all( true );
         if ( referenceGuid ) {
-          this._jstree.select_node( '[objGuid='+referenceGuid+']', true );
+          this._jstree.select_node( '[nodeGuid='+referenceGuid+']', true );
         }
       }
     },
 
-    _reloadNode: function( node, dataMF, nodeObj ) {
+    _reloadNode: function( node ) {
       logger.debug(this.id + ".reloadNode[id:"+ node.id + "][state: " + JSON.stringify(node.state) + "]" );
 
       if ( node.id != '#' ) {
-        this._jstree.rename_node( node, this._getNodeText( nodeObj ) );
-        this._jstree.set_type( node, nodeObj.get( this.typeAttribute ) );
+        this._jstree.rename_node( node, this._buildNodeText( node.original.edgeObj, node.original.nodeObj, node.original.statusList ) );
+        if ( this.nodeTypeAttribute ) {
+          this._jstree.set_type( node, node.original.nodeObj.get(this.nodeTypeAttribute) );
+        }
       }
 
       if ( ! node.state.loaded ) {
@@ -285,145 +471,129 @@ define([
         // load_node would simply do a hard reload (no clean refresh possible)
         // this._jstree.load_node( node );
 
-        // refresh child nodes if node was already loaded
-        mx.ui.action( dataMF, {
-          params: {
-            applyto: "selection",
-            guids: [ nodeObj.getGuid() ]
-          },
-          scope: this.mxform,
-          callback: function( reloadedObjs ) {
-            logger.debug(this.id + ".reloadNode.callback.[id:"+ node.id + "]" );
-            if (! reloadedObjs ) {
-              reloadedObjs = [];
-            }
+        Promise.all([
+          this._loadChildEdges( node ),
+          this._loadChildNodes( node ),
+          this._loadChildStatus( node )
+        ]).then(function(arrayOfResults) {
+          var edges = arrayOfResults[0] || [];
+          var nodes = arrayOfResults[1];
+          var statusListAll = arrayOfResults[2];
 
-            var newGuids = reloadedObjs.map( function(ro) { return ro.getGuid(); }).sort();
-            var childNodes = node.children.map( function(childnodeId) { return this._jstree.get_node(childnodeId); }, this);
-            var oldGuids = childNodes.map( function(childNode) { return childNode.original.obj.getGuid(); }).sort();
+          // fetch the old child nodes
+          var childJsNodes = node.children.map( function(childnodeId) { return this._jstree.get_node(childnodeId); }, this);
+          var oldGuids = childJsNodes.map( function(childJsNode) { return childJsNode.original.edgeObj.getGuid(); }).sort();
+          var newGuids = edges.map( function(ro) { return ro.getGuid(); }).sort();
 
-            //console.log( 'reloaded node ' + node.id + ', guid: ' + (node.original && node.original.obj.getGuid())  );
+          var newEdges = [];
+          var deletedEdges = [];
 
-            var i=0, j=0;
-            while ( i<newGuids.length && j<oldGuids.length ) {
-              if ( newGuids[i] == oldGuids[j] ) {
-                i++; j++;
-              } else if ( newGuids[i] < oldGuids[j] ) {
-                var newObj = _.find( reloadedObjs, function(obj) { return obj.getGuid() == newGuids[i];} );
-                this._createOrMoveObjectNode( node, newObj );
-                i++;
-              } else {
-                this._deleteObjectNode( oldGuids[j] );
-                j++;
-              }
-            }
-
-            while ( i<newGuids.length ) {
-              var newObj = _.find( reloadedObjs, function(obj) { return obj.getGuid() == newGuids[i];} );
-              this._createOrMoveObjectNode( node, newObj );
+          var i=0, j=0;
+          while ( i<newGuids.length && j<oldGuids.length ) {
+            if ( newGuids[i] == oldGuids[j] ) {
+              i++; j++;
+            } else if ( newGuids[i] < oldGuids[j] ) {
+              newEdges.push( _.find( edges, function(obj) { return obj.getGuid() == newGuids[i];} ) );
               i++;
-            }
-
-            while ( j<oldGuids.length ) {
-              this._deleteObjectNode( oldGuids[j] );
+            } else {
+              deletedEdges.push( oldGuids[j] );              
               j++;
             }
-
-            // reorder nodes according to new order provided in DS MF
-            reloadedObjs.forEach( function( obj, idx ) {
-              this._jstree.move_node( '[objGuid=' + obj.getGuid() + ']', node, idx );
-            }, this );
           }
-        }, this);
-      }
-    },
 
-    _createOrMoveObjectNode: function( parentNode, obj ) {
-      logger.debug(this.id + "._createOrMoveObjectNode[guid:"+ obj.getGuid() + "]" );
-
-      // when a node was moved from a different position in the tree
-      // the node may still exist and is moved from there instead of recreating
-      var movedNode = this._jstree.get_node('[objGuid=' + obj.getGuid() + ']');
-      if ( movedNode ) {
-        // this will be handled by the move_node in reorder
-        //this._jstree.move_node( moveNode, parentNode );
-      } else {
-        this._createNewNode( obj );
-        this._subscribeObjectRefresh( obj );
-      }
-    },
-
-    _deleteObjectNode: function( guid ) {
-      logger.debug(this.id + "._deleteObjectNode[guid:"+ guid + "]" );
-      this._jstree.delete_node( '[objGuid='+guid+']' );
-      this._unsubscribeObjectRefresh( guid );
-    },
-
-    _createNewNode: function( obj ) {
-      if ( this.mfDisplayJSON ) {
-        mx.ui.action( this.mfDisplayJSON, {
-          params: {
-            applyto: "selection",
-            guids: [ obj.getGuid() ]
-          },
-          scope: this.mxform,
-          callback: function( jsonText ) {
-            this._jstree.create_node( parentNode, this._buildNodeFromObject( obj, this._parseJsonText( jsonText ) ) );
+          while ( i<newGuids.length ) {
+            newEdges.push( _.find( edges, function(obj) { return obj.getGuid() == newGuids[i];} ) );
+            i++;
           }
-        }, this);
-      } else {
-        this._jstree.create_node( parentNode, this._buildNodeFromObject( obj, this._getNodeText( obj ) ) );
+
+          while ( j<oldGuids.length ) {
+            deletedEdges.push( oldGuids[j] )
+            j++;
+          }
+
+          this._mapEdgesAndNodes( newEdges, nodes, statusListAll, function( edgeObj, nodeObj, statusList) {
+            this._jstree.create_node( parentNode, this._buildNode( edgeObj, nodeObj, statusList ) );
+            this._subscribeObjectRefresh( edgeObj ); // to be checked
+          });
+
+          deletedEdges.forEach( function( guid ) {
+            this._jstree.delete_node( '[edgeGuid='+guid+']' );
+            this._unsubscribeObjectRefresh( guid );      
+          }, this);
+
+          // reorder nodes according to new order provided in DS MF
+          /*
+          reloadedObjs.forEach( function( obj, idx ) {
+            this._jstree.move_node( '[objGuid=' + obj.getGuid() + ']', node, idx );
+          }, this );
+          */
+
+        }.bind(this) );
+
       }
     },
 
-    // Create node object from MxObject using configured attributes
-    _buildNodeFromObject: function( obj, nodeText ) {
+    // NEW method for building the jsTree Node data object
+    _buildNode: function( edgeObj, nodeObj, statusList ) {
       var nodeConfig = {
+        nodeObj: nodeObj,
+        edgeObj: edgeObj,
+        statusList: statusList,
 //        id: obj.getGuid(),
-        text: nodeText,
-        children: obj.get( this.expandableAttribute ) ? true : [],
-        obj: obj,
+        text: this._buildNodeText( edgeObj, nodeObj, statusList ),
+        children: nodeObj.get( this.nodeHasChildrenAttribute ) ? true : [],
         state: {
-          opened: this.openedAttribute ? obj.get( this.openedAttribute ) : false
+          opened: false
         },
-        type: obj.get( this.typeAttribute ),
-        li_attr: { objGuid: obj.getGuid() }
+        li_attr: {
+          nodeGuid: nodeObj.getGuid(),
+        }
       };
+      if ( edgeObj ) {
+        nodeConfig.li_attr.edgeGuid = edgeObj.getGuid();
+      }
 
+      if ( this.nodeTypeAttribute ) {
+        nodeConfig.type = nodeObj.get(this.nodeTypeAttribute);
+      }
       return nodeConfig;
     },
 
-    _parseJsonText: function( jsonString ) {
-      return JSON.parse( jsonString ).map( function( entry ) {
-        if ( entry.type ) {
-          var typeEntry = this._treeTypeMapping[ entry.type ]
-          if ( typeEntry ) {
-            return _.extend( {}, entry, typeEntry );
-          } else {
-            return { text: '['+entry.type+']'};
-          }
-        } else {
-          return entry;
-        }
+    // compose the full node text entry with 
+    _buildNodeText: function( edgeObj, nodeObj, statusList ) {
+      var text = [];
+      // Only use the Status matching the current constraint for display
+      var constraintGuid = this._contextObj.get( this.treeStatusFilterRef.split('/')[0]);      
+      var statusObj = statusList.find( function(obj){
+        return obj.get( this.treeStatusConstrainedRef.split('/')[0] ) == constraintGuid;
       }, this);
+
+      if ( statusObj ) {
+        text.push( 
+          this._buildNodeTextType( statusObj.get('NodeStatus') )
+        );
+      }
+      if ( edgeObj ) {
+        text.push({
+          text: edgeObj.get('Amount')
+        });
+      } 
+      if ( nodeObj ) {
+        text.push({
+          text: nodeObj.get('Title')
+        });
+      }
+      return text;
     },
 
-    _getNodeText: function( obj ) {
-      if ( this.displayAttributeJSON) {
-        return this._parseJsonText( obj.get( this.displayAttributeJSON ) );
-      } else if ( this.mfDisplayJSON ) {
-        //must be retrieves asynchronous
-        if ( this.displayAttribute ) {
-          // just return the text if provided
-          return obj.get( this.displayAttribute );
-        }
-        return '';
-      } else if ( this.displayAttribute ) {
-        // just return the text. This may also contain html
-        return obj.get( this.displayAttribute );
+    // create an entry for a <type> icon than is used in the node text array.
+    _buildNodeTextType: function( type ) {
+      var typeEntry = this._treeTypeMapping[ type ];
+      if ( typeEntry ) {
+        return _.extend( { type: type }, typeEntry );
       } else {
-        return '<empty>';
-      }
+        return { text: '['+entry.type+']'};
+      }    
     },
 
     // mxui.widget._WidgetBase.uninitialize is called when the widget is destroyed. Implement to do special tear-down work.
