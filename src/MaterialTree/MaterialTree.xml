@@ -11,6 +11,11 @@
             <category>Entities</category>
             <description>Entity containing tree node data.</description>
         </property>
+        <property key="treeNodeGroup" type="entity" required="true">
+            <caption>Node Group</caption>
+            <category>Entities</category>
+            <description>Nodes can belong to groups from which attributes can be shown.</description>
+        </property>
         <property key="treeEdge" type="entity" required="true">
             <caption>Edge</caption>
             <category>Entities</category>
@@ -23,39 +28,55 @@
         </property>
         
 
-        <property key="rootNodeRef" type="entity" required="true" isPath="optional" pathType="reference" allowNonPersistableEntities="true">
+        <property key="rootNodeRef" type="entity" required="true" isPath="yes" pathType="reference" allowNonPersistableEntities="true">
             <caption>Context Root</caption>
             <category>Entities</category>
             <description>Association to root node from Context.</description>
         </property>
-        <property key="treeEdgeParentRef" type="entity" required="true" isPath="optional" pathType="reference" entityProperty="treeEdge">
+        <property key="treeEdgeParentRef" type="entity" required="true" isPath="yes" pathType="reference" entityProperty="treeEdge">
             <caption>Edge Parent</caption>
             <category>Entities</category>
             <description>Association to parent node from Edge.</description>
         </property>
-        <property key="treeEdgeChildRef" type="entity" required="true" isPath="optional" pathType="reference" entityProperty="treeEdge">
+        <property key="treeEdgeChildRef" type="entity" required="true" isPath="yes" pathType="reference" entityProperty="treeEdge">
             <caption>Edge Child</caption>
             <category>Entities</category>
             <description>Association to child node from Edge.</description>
         </property>
-        <property key="treeStatusRef" type="entity" required="true" isPath="optional" pathType="reference" entityProperty="treeStatus">
+        <property key="treeNodeGroupRef" type="entity" required="true" isPath="yes" pathType="reference" entityProperty="treeNode">
+            <caption>Association to Node Group</caption>
+            <category>Entities</category>
+            <description>Association from Node to Node Group.</description>
+        </property>
+        <property key="treeStatusRef" type="entity" required="true" isPath="yes" pathType="reference" entityProperty="treeStatus">
             <caption>Status Association</caption>
             <category>Entities</category>
             <description>Association from Status to Node.</description>
         </property>
-        <property key="treeStatusConstrainedRef" type="entity" required="true" isPath="optional" pathType="reference" entityProperty="treeStatus">
+        <property key="treeStatusConstrainedRef" type="entity" required="true" isPath="yes" pathType="reference" entityProperty="treeStatus">
             <caption>Status Constrained</caption>
             <category>Entities</category>
             <description>Use this to filter the shown Status based on the context.</description>
         </property>
-        <property key="treeStatusFilterRef" type="entity" required="true" isPath="optional" pathType="reference" allowNonPersistableEntities="true">
+        <property key="treeStatusFilterRef" type="entity" required="true" isPath="yes" pathType="reference" allowNonPersistableEntities="true">
             <caption>Status Filter</caption>
             <category>Entities</category>
             <description>Use this to filter the shown Status based on the context.</description>
         </property>
 
+        <property key="treeContextNodeSelectedRef" type="entity" required="true" isPath="optional" pathType="reference" allowNonPersistableEntities="true">
+            <caption>Selected Node</caption>
+            <category>Entities</category>
+            <description>Association used by the widget to set the selected node.</description>
+        </property>
+        <property key="treeContextEdgeSelectedRef" type="entity" required="true" isPath="optional" pathType="reference" allowNonPersistableEntities="true">
+            <caption>Selected Edge</caption>
+            <category>Entities</category>
+            <description>Association used by the widget to set the selected node.</description>
+        </property>
 
-        <property key="nodeHasChildrenAttribute" type="attribute" required="true" entityProperty="treeNode">
+
+        <property key="nodeHasChildrenAttribute" type="attribute" required="false" entityProperty="treeNode">
             <caption>has children (Node)</caption>
             <category>Attributes</category>
             <description>Boolean determining if a Node has children.</description>
@@ -73,7 +94,138 @@
               <attributeType name="Enum" />
             </attributeTypes>
         </property>
+
+        <property key="displayConfig" type="object" isList="true" required="false">
+          <caption>Node display configuration</caption>
+          <category>Attributes</category>
+          <description>List of entries to show for a node</description>
+          <properties>
+            <property key="displayNodeAttribute" type="attribute" required="false" entityProperty="../treeNode">
+              <caption>Node Attribute</caption>
+              <category>Attributes</category>
+              <description>Attribute from the node to be displayed (Select only one attribute)</description>
+              <attributeTypes>
+                <attributeType name="String" />
+                <attributeType name="Enum" />
+                <attributeType name="Integer" />
+                <attributeType name="Long" />
+                <attributeType name="Decimal" />
+                <attributeType name="Boolean" />
+              </attributeTypes>
+            </property>
+            <property key="displayEdgeAttribute" type="attribute" required="false" entityProperty="../treeEdge">
+                <caption>Edge Attribute</caption>
+              <category>Attributes</category>
+              <description>Attribute from the edge to be displayed</description>
+              <attributeTypes>
+                <attributeType name="String" />
+                <attributeType name="Enum" />
+                <attributeType name="Integer" />
+                <attributeType name="Long" />
+                <attributeType name="Decimal" />
+                <attributeType name="Boolean" />
+              </attributeTypes>
+            </property>
+            <property key="displayStatusAttribute" type="attribute" required="false" entityProperty="../treeStatus">
+                <caption>Status Attribute</caption>
+              <category>Attributes</category>
+              <description>Attribute from the node status to be displayed</description>
+              <attributeTypes>
+                <attributeType name="String" />
+                <attributeType name="Enum" />
+                <attributeType name="Integer" />
+                <attributeType name="Long" />
+                <attributeType name="Decimal" />
+                <attributeType name="Boolean" />
+              </attributeTypes>
+            </property>
+            <property key="displayGroupAttribute" type="attribute" required="false" entityProperty="../treeNodeGroup">
+                <caption>Group Attribute</caption>
+              <category>Attributes</category>
+              <description>Attribute from the node group to be displayed</description>
+              <attributeTypes>
+                <attributeType name="String" />
+                <attributeType name="Enum" />
+                <attributeType name="Integer" />
+                <attributeType name="Long" />
+                <attributeType name="Decimal" />
+                <attributeType name="Boolean" />
+              </attributeTypes>
+            </property>
+            <property key="displayMode" type="enumeration" defaultValue="text">
+                <caption>Display mode</caption>
+                <category>Attributes</category>
+                <description>show plain text or use as type for an icon</description>
+                <enumerationValues>
+                    <enumerationValue key="text">Plain text</enumerationValue>
+                    <enumerationValue key="type">Icon type</enumerationValue>
+                </enumerationValues>
+            </property>
+            <property key="displayFilter" type="attribute" required="false">
+              <caption>Filter Attribute</caption>
+              <category>Attributes</category>
+              <description>If this attribute is false, this entry is not displayed.</description>
+              <attributeTypes>
+                <attributeType name="Boolean" />
+              </attributeTypes>
+            </property>
+            <property key="displayCssClass" type="string" required="false">
+              <caption>Css class</caption>
+              <category>Attributes</category>
+              <description>css class for this entry</description>
+            </property>
+          </properties>
+        </property>
      
+        <property key="contextAttributeMapping" type="object" isList="true" required="false">
+          <caption>Context map</caption>
+          <category>Mapping</category>
+          <description>Define attributes of the selected node to be mirrored to the context</description>
+          <properties>
+            <property key="mapNodeAttribute" type="attribute" required="false" entityProperty="../treeNode">
+              <caption>Node Attribute</caption>
+              <category>Attributes</category>
+              <description>Attribute from the node</description>
+              <attributeTypes>
+                <attributeType name="String" />
+                <attributeType name="Enum" />
+                <attributeType name="Integer" />
+                <attributeType name="Long" />
+                <attributeType name="Decimal" />
+                <attributeType name="Boolean" />
+                <attributeType name="DateTime" />
+              </attributeTypes>
+            </property>
+            <property key="mapEdgeAttribute" type="attribute" required="false" entityProperty="../treeEdge">
+                <caption>Edge Attribute</caption>
+              <category>Attributes</category>
+              <description>Attribute from the edge</description>
+              <attributeTypes>
+                <attributeType name="String" />
+                <attributeType name="Enum" />
+                <attributeType name="Integer" />
+                <attributeType name="Long" />
+                <attributeType name="Decimal" />
+                <attributeType name="Boolean" />
+                <attributeType name="DateTime" />
+              </attributeTypes>
+            </property>
+            <property key="mapContextAttribute" type="attribute" required="true">
+                <caption>Context Attribute</caption>
+              <category>Attributes</category>
+              <description>Attribute to be mapped to</description>
+              <attributeTypes>
+                <attributeType name="String" />
+                <attributeType name="Enum" />
+                <attributeType name="Integer" />
+                <attributeType name="Long" />
+                <attributeType name="Decimal" />
+                <attributeType name="Boolean" />
+                <attributeType name="DateTime" />
+              </attributeTypes>
+            </property>
+          </properties>
+        </property>
 
         <property key="typeMapping" type="object" isList="true" required="false">
           <caption>Type Mapping</caption>
