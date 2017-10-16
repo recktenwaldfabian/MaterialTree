@@ -223,6 +223,14 @@ define([
       objDst.set( attributeDst, value );
     },
 
+    _setNodeLoading: function( node, loading ) {
+      if ( loading ) {
+        this._jstree.get_node( node, true).addClass("jstree-loading").attr('aria-busy',true);
+      } else {
+        this._jstree.get_node( node, true).removeClass("jstree-loading").attr('aria-busy',false);
+      }
+    },
+
     _load_node_jstree: function( e, data ) {
       logger.debug(this.id + ".jstree.load_node");
       //console.log( '_load_node' );
@@ -241,6 +249,9 @@ define([
       if ( filterGuid ) {
         var rootNode = this._jstree.get_node('#');
         var topNode = this._jstree.get_node( rootNode.children[0] );
+        
+        topNode.state.loading = true;
+
         this._loadFilteredStatus( topNode.data.nodeObj, filterGuid ).then( function(statusObj) {
           topNode.data.statusObj = statusObj;
           this._refreshNodeText( topNode );
@@ -258,6 +269,7 @@ define([
       var childNodes = parentNode.children.map( function( child_id ) { return this._jstree.get_node( child_id ); }, this );
 
       if ( childNodes.length > 0 ) {
+        this._setNodeLoading( parentNode, true );
         // fetch the status for all children of this node
         this._loadChildFilteredStatus( parentNode.data.nodeObj, filterGuid ).then( function(statusList) {
           childNodes.forEach( function( node ) {
@@ -269,14 +281,17 @@ define([
             // refresh the node display
             this._refreshNodeText( node );
             this._refreshNodeType( node );
+            this._setNodeLoading( node, false );
           },this);                   
-
+          this._setNodeLoading( parentNode, false );          
         }.bind(this) );
 
         // apply reload to child nodes
         childNodes.forEach( function( node ) {
           this._statusFilter_reloadNodeChildren( node, filterGuid );
         },this);
+      } else {
+        this._setNodeLoading( parentNode, true );
       }
     },
 
