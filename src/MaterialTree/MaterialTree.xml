@@ -95,6 +95,15 @@
             </attributeTypes>
         </property>
 
+        <property key="nodeSortAttribute" type="attribute" required="true" entityProperty="treeNode">
+            <caption>Sort Attribute (Node)</caption>
+            <category>Attributes</category>
+            <description>Attribute to sort the nodes on.</description>
+            <attributeTypes>
+              <attributeType name="String" />
+            </attributeTypes>
+        </property>
+
         <property key="displayConfig" type="object" isList="true" required="false">
           <caption>Node display configuration</caption>
           <category>Attributes</category>

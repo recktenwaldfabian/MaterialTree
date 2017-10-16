@@ -71,6 +71,7 @@ define([
 
     nodeHasChildrenAttribute: '', // attribute of <treeNode>, determines if node has children
     nodeTypeAttribute: '', // determines the primary icon to be shown for the node
+    nodeSortAttribute: '', // attribute to sort the nodes on
 
     typeMapping: '', // mapping from type strings to icons and translated labels
 
@@ -199,7 +200,12 @@ define([
           },
         },
         'types' : this._treeTypeMapping,
-        'plugins' : [ 'types' ]
+        'plugins' : [ 'types', 'sort' ],
+        'sort' : function( a, b) {
+          var nodeA = this._jstree.get_node( a );
+          var nodeB = this._jstree.get_node( b );
+          return nodeA.data.nodeObj.get( this.nodeSortAttribute ).localeCompare( nodeB.data.nodeObj.get( this.nodeSortAttribute ) );
+        }.bind(this)
 
       }).on( 'changed.jstree', dojoLang.hitch( this, '_changed_jstree') )
       .on( 'load_node.jstree', dojoLang.hitch( this, '_load_node_jstree') );
@@ -221,9 +227,12 @@ define([
       logger.debug(this.id + ".jstree.load_node");
       //console.log( '_load_node' );
       //this._updateSelectionFromContext();
-      if ( data && data.node && (data.node.parent=='#') ) {
-        this._jstree.select_node( data.node, true );
-        this._selectNode( data.node );
+      if ( data && data.node && (data.node.id=='#') ) {
+        data.node.children.forEach( function( childId ){
+          var childNode = this._jstree.get_node( childId );
+          this._jstree.select_node( childNode, true );
+          this._selectNode( childNode );
+        },this);
       }
     },
 
@@ -235,11 +244,13 @@ define([
         this._loadFilteredStatus( topNode.data.nodeObj, filterGuid ).then( function(statusObj) {
           topNode.data.statusObj = statusObj;
           this._refreshNodeText( topNode );
+          this._refreshNodeType( topNode );
         }.bind(this));
   
         this._statusFilter_reloadNodeChildren( topNode, filterGuid );
-      }
-    
+      } else {
+        this._refreshNodeTexts();
+      }    
     },
 
     _statusFilter_reloadNodeChildren: function( parentNode, filterGuid ) {
@@ -257,6 +268,7 @@ define([
             }, this);
             // refresh the node display
             this._refreshNodeText( node );
+            this._refreshNodeType( node );
           },this);                   
 
         }.bind(this) );
@@ -856,7 +868,7 @@ define([
             return;
           }
         } else if ( cfg.displayStatusAttribute ) {
-          if ( statusObj ) {
+          if ( statusObj && this._statusFilterGuid ) {
             attributeValue = statusObj.get( cfg.displayStatusAttribute );
           } else {
             return;
