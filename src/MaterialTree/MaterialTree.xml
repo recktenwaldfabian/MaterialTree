@@ -249,5 +249,12 @@
             </property>
           </properties>
         </property>
+
+        <property key="typePrefixFiltered" type="string" required="false">
+          <caption>Type prefix</caption>
+          <category>Display</category>
+          <description>This prefix string is added to to the Type (Node) attribute to determine the type icon when filter is set.</description>
+        </property>
+
     </properties>
 </widget>

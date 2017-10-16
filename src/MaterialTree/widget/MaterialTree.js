@@ -83,6 +83,10 @@ define([
     _contextObj: null,
     _jstree: null,
     _treeTypeMapping: null,
+    _statusFilterGuid: null,
+
+    // This is function is needed for a quite useless requirement by Tec4U, i.e. show different type icons when a filter is on
+    typePrefixFiltered: '',
 
     // dojo.declare.constructor is called to construct the widget instance. Implement to initialize non-primitive properties.
     constructor: function () {
@@ -93,26 +97,75 @@ define([
     // dijit._WidgetBase.postCreate is called after constructing the widget. Implement to do extra setup work.
     postCreate: function () {
       logger.debug(this.id + ".postCreate");
-    },
+
+      this.rootNodeRef_Name = this.rootNodeRef.split('/')[0];
+      this.treeEdgeParentRef_Name = this.treeEdgeParentRef.split('/')[0];
+      this.treeEdgeChildRef_Name = this.treeEdgeChildRef.split('/')[0];
+      this.treeStatusRef_Name = this.treeStatusRef.split('/')[0];
+      this.treeNodeGroupRef_Name = this.treeNodeGroupRef.split('/')[0];
+      this.treeStatusConstrainedRef_Name = this.treeStatusConstrainedRef.split('/')[0];
+      this.treeStatusFilterRef_Name = this.treeStatusFilterRef.split('/')[0];
+      this.treeContextEdgeSelectedRef_Name = this.treeContextEdgeSelectedRef.split('/')[0];
+      this.treeContextNodeSelectedRef_Name = this.treeContextNodeSelectedRef.split('/')[0];
+     },
 
     // mxui.widget._WidgetBase.update is called when context is changed or initialized. Implement to re-render and / or fetch data.
     update: function (obj, update_callback) {
       logger.debug(this.id + ".update");
 
-      this._contextObj = obj;
-      
+      if ( this._contextObj ) {
+        if (obj) {
+          if ( this._contextObj.getGuid() = obj.getGuid() ) {
+            // nothing to be changed
+            this._contextObj = obj;
+          } else {
+            this._jstree.destroy();
+            unsubscribeAll();
+
+            this._contextObj = obj;
+            this._initializeJsTree();
+          }
+        } else {
+          this._jstree.destroy();
+          unsubscribeAll();
+          this._contextObj = obj;
+        }
+      } else {
+        if (obj) {
+          this._contextObj = obj;
+          this._initializeJsTree();
+        } else {
+          // nothing to do
+        }
+      }      
+      if (update_callback) update_callback();
+    },
+
+    _initializeJsTree: function() {      
       this.subscribe({
         guid: this._contextObj.getGuid(),
         callback: function() {
-          this._refreshNodeTexts();
+          var newStatusFilterGuid = this._contextObj.get( this.treeStatusFilterRef_Name );          
+          if ( this._statusFilterGuid != newStatusFilterGuid ) {
+            this._statusFilterGuid = newStatusFilterGuid;
+            this._statusFilter_changed( this._statusFilterGuid );
+          } else {
+            this._refreshNodeTexts();
+          }
         }
       }, this);
 
       this.subscribe({
         guid: this._contextObj.getGuid(),
-        attr: this.treeStatusFilterRef.split('/')[0],
+        attr: this.treeStatusFilterRef_Name,
         callback: function() {
-          this._refreshNodeTexts();
+          
+          var newStatusFilterGuid = this._contextObj.get( this.treeStatusFilterRef_Name );          
+          if ( this._statusFilterGuid != newStatusFilterGuid ) {
+            this._statusFilterGuid = newStatusFilterGuid;
+            this._statusFilter_changed( this._statusFilterGuid );
+          }          
+          
         }
       }, this);
 
@@ -122,7 +175,7 @@ define([
             guid: this._contextObj.getGuid(),
             attr: cfg.displayFilter,
             callback: function() {
-              this._refreshNodeTexts();
+              this._displayFilter_changed();
             }
           }, this);
         }
@@ -154,7 +207,6 @@ define([
       this._jstree = $(this.domNode).jstree(true);
 
       //this._resetSubscriptions();
-      if (update_callback) update_callback();
     },
 
     _copyObjectAttribute: function( objSrc, objDst, attributeSrc, attributeDst ) {
@@ -169,6 +221,56 @@ define([
       logger.debug(this.id + ".jstree.load_node");
       //console.log( '_load_node' );
       //this._updateSelectionFromContext();
+      if ( data && data.node && (data.node.parent=='#') ) {
+        this._jstree.select_node( data.node, true );
+        this._selectNode( data.node );
+      }
+    },
+
+    // triggered when the reference to the status filter is changed
+    _statusFilter_changed: function( filterGuid ) {
+      if ( filterGuid ) {
+        var rootNode = this._jstree.get_node('#');
+        var topNode = this._jstree.get_node( rootNode.children[0] );
+        this._loadFilteredStatus( topNode.data.nodeObj, filterGuid ).then( function(statusObj) {
+          topNode.data.statusObj = statusObj;
+          this._refreshNodeText( topNode );
+        }.bind(this));
+  
+        this._statusFilter_reloadNodeChildren( topNode, filterGuid );
+      }
+    
+    },
+
+    _statusFilter_reloadNodeChildren: function( parentNode, filterGuid ) {
+      // get child nodes
+      var childNodes = parentNode.children.map( function( child_id ) { return this._jstree.get_node( child_id ); }, this );
+
+      if ( childNodes.length > 0 ) {
+        // fetch the status for all children of this node
+        this._loadChildFilteredStatus( parentNode.data.nodeObj, filterGuid ).then( function(statusList) {
+          childNodes.forEach( function( node ) {
+            // find the status matching each node
+            var nodeObjGuid = node.data.nodeObj.getGuid();              
+            node.data.statusObj = statusList.find( function(obj){
+              return obj.get( this.treeStatusRef_Name ) == nodeObjGuid;
+            }, this);
+            // refresh the node display
+            this._refreshNodeText( node );
+          },this);                   
+
+        }.bind(this) );
+
+        // apply reload to child nodes
+        childNodes.forEach( function( node ) {
+          this._statusFilter_reloadNodeChildren( node, filterGuid );
+        },this);
+      }
+    },
+
+    // triggered when one of the display filter flags is changed
+    _displayFilter_changed: function() {
+      this._refreshNodeTexts();      
     },
 
     // ----
@@ -182,39 +284,41 @@ define([
         var loadRoot = this._loadRootNode();
 
         // load status list from root
-        var loadStatusList = loadRoot.then( function(nodeObj) {
-          return this._loadStatus( nodeObj );
+        var loadRootStatus = loadRoot.then( function(nodeObj) {
+          return this._loadFilteredStatus( nodeObj, this._contextObj.get( this.treeStatusFilterRef_Name ) );
         }.bind(this));
 
         // build root node
-        Promise.all( [loadRoot, loadStatusList] ).then( function( results ){
+        Promise.all( [loadRoot, loadRootStatus] ).then( function( results ){
           var nodeObj = results[0];
-          var statusList = results[1];          
-          data_callback.call( this._jstree, [ this._buildNode(null, nodeObj, null, statusList) ] );
-          this._subscribeRefresh( null, nodeObj, null, statusList );
+          var statusObj = results[1];
+          var nodeConfig = this._buildNode(null, nodeObj, null, statusObj);
+          nodeConfig.state.opened = true; // open the root node by default         
+          data_callback.call( this._jstree, [ nodeConfig ] );
+          this._subscribeRefresh( null, nodeObj, null, statusObj );
         }.bind(this));
 
       } else {
         // other child nodes are retrieved via XPATH from the parent node
-        var parentNodeObj = node.original.nodeObj;
+        var parentNodeObj = node.data.nodeObj;
 
         // Load all child node data (edges, nodes, status)
         Promise.all([
           this._loadChildEdges( parentNodeObj ),
           this._loadChildNodes( parentNodeObj ),
-          this._loadChildStatus( parentNodeObj ),
+          this._loadChildFilteredStatus( parentNodeObj, this._contextObj.get( this.treeStatusFilterRef_Name ) ),
           this._loadChildGroups( parentNodeObj )
         ]).then(function(arrayOfResults) {
           var edges = arrayOfResults[0];
           var nodes = arrayOfResults[1];
-          var statusListAll = arrayOfResults[2];
+          var statusList = arrayOfResults[2];
           var groups = arrayOfResults[3];
           
           var newNodes = [];
 
-          this._mapEdgesAndNodes( edges, nodes, groups, statusListAll, function( edgeObj, nodeObj, groupObj, statusList) {
-            newNodes.push( this._buildNode( edgeObj, nodeObj, groupObj, statusList) );
-            this._subscribeRefresh( edgeObj, nodeObj, groupObj, statusList );
+          this._mapEdgesAndNodes( edges, nodes, groups, statusList, function( edgeObj, nodeObj, groupObj, statusObj) {
+            newNodes.push( this._buildNode( edgeObj, nodeObj, groupObj, statusObj) );
+            this._subscribeRefresh( edgeObj, nodeObj, groupObj, statusObj );
           });
 
           data_callback.call( this, newNodes);
@@ -233,19 +337,19 @@ define([
         // this._jstree.load_node( node );
 
         Promise.all([
-          this._loadChildEdges( parentNode.original.nodeObj ),
-          this._loadChildNodes( parentNode.original.nodeObj ),
-          this._loadChildStatus( parentNode.original.nodeObj ),
-          this._loadChildGroups( parentNode.original.nodeObj )
+          this._loadChildEdges( parentNode.data.nodeObj ),
+          this._loadChildNodes( parentNode.data.nodeObj ),
+          this._loadChildFilteredStatus( parentNode.data.nodeObj, this._contextObj.get( this.treeStatusFilterRef_Name ) ),
+          this._loadChildGroups( parentNode.data.nodeObj )
         ]).then(function(arrayOfResults) {
           var edges = arrayOfResults[0] || [];
           var nodes = arrayOfResults[1];
-          var statusListAll = arrayOfResults[2];
+          var statusList = arrayOfResults[2];
           var groups = arrayOfResults[3];
 
           // fetch the old child nodes
           var childJsNodes = parentNode.children.map( function(childnodeId) { return this._jstree.get_node(childnodeId); }, this);
-          var oldGuids = childJsNodes.map( function(childJsNode) { return childJsNode.original.edgeObj.getGuid(); }).sort();
+          var oldGuids = childJsNodes.map( function(childJsNode) { return childJsNode.data.edgeObj.getGuid(); }).sort();
           var newGuids = edges.map( function(ro) { return ro.getGuid(); }).sort();
 
           var newEdges = [];
@@ -274,9 +378,9 @@ define([
             j++;
           }
 
-          this._mapEdgesAndNodes( newEdges, nodes, groups, statusListAll, function( edgeObj, nodeObj, groupObj, statusList) {
-            this._jstree.create_node( parentNode, this._buildNode( edgeObj, nodeObj, groupObj, statusList ) );
-            this._subscribeRefresh( edgeObj, nodeObj, groupObj, statusList );
+          this._mapEdgesAndNodes( newEdges, nodes, groups, statusList, function( edgeObj, nodeObj, groupObj, statusObj) {
+            this._jstree.create_node( parentNode, this._buildNode( edgeObj, nodeObj, groupObj, statusObj ) );
+            this._subscribeRefresh( edgeObj, nodeObj, groupObj, statusObj );
           });
 
           deletedEdges.forEach( function( guid ) {
@@ -298,33 +402,31 @@ define([
 
 
     // iterate over edges, find matching node and statusList and call callback with matched data
-    _mapEdgesAndNodes: function( edges, nodes, groups, statusListAll, callback ) {
+    _mapEdgesAndNodes: function( edges, nodes, groups, statusList, callback ) {
       edges.forEach( function(edgeObj) {
         // find the child node for each edge
-        var edgeChildGuid = edgeObj.get(this.treeEdgeChildRef.split('/')[0]);          
+        var edgeChildGuid = edgeObj.get(this.treeEdgeChildRef_Name);          
         
         // match nodes with edges
         var nodeObj = nodes.find( function(obj){
           return obj.getGuid() == edgeChildGuid;
         }, this);
 
+        var statusObj = statusList.find( function(obj){
+          return obj.get( this.treeStatusRef_Name ) == edgeChildGuid;
+        }, this);
+
         var groupObj = null;
-        var statusList = []; 
 
         if ( nodeObj ) {
-          var nodeGroupGuid = nodeObj.get(this.treeNodeGroupRef.split('/')[0]);          
+          var nodeGroupGuid = nodeObj.get(this.treeNodeGroupRef_Name);          
           // match groups with nodes
           groupObj = groups.find( function(obj){
             return obj.getGuid() == nodeGroupGuid;
           }, this);
-
-          // match statusList with edges
-          statusList = statusListAll.filter( function(obj){
-            return obj.get( this.treeStatusRef.split('/')[0] ) == edgeChildGuid;
-          }, this);
         }
 
-        callback.call(this, edgeObj, nodeObj, groupObj, statusList );
+        callback.call(this, edgeObj, nodeObj, groupObj, statusObj );
       }, this );
     },
 
@@ -335,106 +437,141 @@ define([
       var event = data.event;
 
       if ( data.action == 'select_node' ) {
-        var nodeObj = data.node.original.nodeObj;
-        var edgeObj = data.node.original.edgeObj;
-
-        if ( this._contextObj.isReadonlyAttr( this.treeContextEdgeSelectedRef.split('/')[0] ) ){
-          logger.warn(this.treeContextEdgeSelectedRef.split('/')[0] + ' is read only!');
-        } else {
-          this._contextObj.set(
-            this.treeContextEdgeSelectedRef.split('/')[0],
-            edgeObj ? edgeObj.getGuid() : null
-          );
-        }
-
-        if ( this._contextObj.isReadonlyAttr( this.treeContextNodeSelectedRef.split('/')[0] ) ){
-          logger.warn(this.treeContextNodeSelectedRef.split('/')[0] + ' is read only!');
-        } else {
-          this._contextObj.set(
-            this.treeContextNodeSelectedRef.split('/')[0],
-            nodeObj ? nodeObj.getGuid() : null
-          );
-        }
-
-        // copy all attributes defined in the mapping when selecting a node in the tree
-        this.contextAttributeMapping.forEach( function( mapping ) {
-          if ( this._contextObj.isReadonlyAttr( mapping.mapContextAttribute.split('/')[0] ) ){
-            logger.warn( mapping.mapContextAttribute.split('/')[0] + ' is read only!');
-          } else {
-            if ( mapping.mapNodeAttribute ) {
-              this._copyObjectAttribute( nodeObj, this._contextObj, mapping.mapNodeAttribute, mapping.mapContextAttribute);
-            } else if ( mapping.mapEdgeAttribute ) {
-              this._copyObjectAttribute( edgeObj, this._contextObj, mapping.mapEdgeAttribute, mapping.mapContextAttribute);
-            }
-          }
-        }, this);
-
+        this._selectNode( data.node );
       } else if ( data.action == 'delete_node' ) {
         // do something on delete
       } else if ( data.action == 'ready' ){
         // do something when tree is ready
       }
     },
+
+    _selectNode: function( node ) {
+      var nodeObj = node.data.nodeObj;
+      var edgeObj = node.data.edgeObj;
+
+      if ( this._contextObj.isReadonlyAttr( this.treeContextEdgeSelectedRef_Name ) ){
+        logger.warn(this.treeContextEdgeSelectedRef_Name + ' is read only!');
+      } else {
+        this._contextObj.set(
+          this.treeContextEdgeSelectedRef_Name,
+          edgeObj ? edgeObj.getGuid() : null
+        );
+      }
+
+      if ( this._contextObj.isReadonlyAttr( this.treeContextNodeSelectedRef_Name ) ){
+        logger.warn(this.treeContextNodeSelectedRef_Name + ' is read only!');
+      } else {
+        this._contextObj.set(
+          this.treeContextNodeSelectedRef_Name,
+          nodeObj ? nodeObj.getGuid() : null
+        );
+      }
+
+      // copy all attributes defined in the mapping when selecting a node in the tree
+      this.contextAttributeMapping.forEach( function( mapping ) {
+        if ( this._contextObj.isReadonlyAttr( mapping.mapContextAttribute ) ){
+          logger.warn( mapping.mapContextAttribute + ' is read only!');
+        } else {
+          if ( mapping.mapNodeAttribute ) {
+            this._copyObjectAttribute( nodeObj, this._contextObj, mapping.mapNodeAttribute, mapping.mapContextAttribute);
+          } else if ( mapping.mapEdgeAttribute ) {
+            this._copyObjectAttribute( edgeObj, this._contextObj, mapping.mapEdgeAttribute, mapping.mapContextAttribute);
+          }
+        }
+      }, this);
+  },
     
     // *** DATA LOADING ***
     // Methods for loading data from the server (returning a Promise)
 
     // load the root node from the context
     _loadRootNode: function() {
-      return this._loadPath( this._contextObj.getGuid(), this.rootNodeRef.split('/')[0] ).then( function(objs){
+      return this._loadPath( this._contextObj.getGuid(), this.rootNodeRef_Name ).then( function(objs){
         return objs[0];
       }.bind(this));
     },
 
     // retrieve all child edges of a node
     _loadChildEdges: function( parentNodeObj ) {
-      var xpathConstraint = this.treeEdgeParentRef.split('/')[0] +
+      var xpathConstraint = this.treeEdgeParentRef_Name +
       '=' + parentNodeObj.getGuid() ;
       return this._loadXPath( this.treeEdge, xpathConstraint );
     },
 
     // retrieve all child nodes of a node
     _loadChildNodes: function( parentNodeObj ) {
-      var xpathConstraint = this.treeEdgeChildRef.split('/')[0] +
+      var xpathConstraint = this.treeEdgeChildRef_Name +
       '/' + this.treeEdge +
-      '/' + this.treeEdgeParentRef.split('/')[0] +
+      '/' + this.treeEdgeParentRef_Name +
       '=' + parentNodeObj.getGuid() ;
       return this._loadXPath( this.treeNode, xpathConstraint );
     },
 
     // retrieve all status of all child nodes of a node
     _loadChildStatus: function( parentNodeObj ) {
-      var xpathConstraint = this.treeStatusRef.split('/')[0] + 
+      var xpathConstraint = this.treeStatusRef_Name + 
       '/' + this.treeNode +
-      '/' + this.treeEdgeChildRef.split('/')[0] +
+      '/' + this.treeEdgeChildRef_Name +
       '/' + this.treeEdge +
-      '/' + this.treeEdgeParentRef.split('/')[0] +
+      '/' + this.treeEdgeParentRef_Name +
       '=' + parentNodeObj.getGuid() ;
       return this._loadXPath( this.treeStatus, xpathConstraint );
     },
 
     // retrieve all status of all child nodes of a node
+    _loadChildFilteredStatus: function( parentNodeObj, filterGuid ) {
+      if ( filterGuid ) {
+        var xpathConstraint = this.treeStatusRef_Name + 
+        '/' + this.treeNode +
+        '/' + this.treeEdgeChildRef_Name +
+        '/' + this.treeEdge +
+        '/' + this.treeEdgeParentRef_Name +
+        '=' + parentNodeObj.getGuid() +
+        ' and ' + this.treeStatusConstrainedRef_Name +
+        '=' + filterGuid;
+        return this._loadXPath( this.treeStatus, xpathConstraint );
+      } else {
+        return Promise.resolve( [] );
+      }
+    },
+
+    // retrieve all status of all child nodes of a node
     _loadChildGroups: function( parentNodeObj ) {
-      var xpathConstraint = this.treeNodeGroupRef.split('/')[0] + 
+      var xpathConstraint = this.treeNodeGroupRef_Name + 
       '/' + this.treeNode +
-      '/' + this.treeEdgeChildRef.split('/')[0] +
+      '/' + this.treeEdgeChildRef_Name +
       '/' + this.treeEdge +
-      '/' + this.treeEdgeParentRef.split('/')[0] +
+      '/' + this.treeEdgeParentRef_Name +
       '=' + parentNodeObj.getGuid() ;
       return this._loadXPath( this.treeNodeGroup, xpathConstraint );
     },
 /*
     _loadGroup: function( nodeObj ) {
-      return this._loadPath( nodeObj.getGuid(), this.treeNodeGroupRef.split('/')[0]).then( function(objs){
+      return this._loadPath( nodeObj.getGuid(), this.treeNodeGroupRef_Name).then( function(objs){
         return objs[0];
       }.bind(this));
     },
 */
     // retrieve all status of a node
     _loadStatus: function( nodeObj ) {
-      var xpathConstraint = this.treeStatusRef.split('/')[0] + 
+      var xpathConstraint = this.treeStatusRef_Name + 
       '=' + nodeObj.getGuid() ;
       return this._loadXPath( this.treeStatus, xpathConstraint );
+    },
+
+    // retrieve only the status matching a given filter
+    _loadFilteredStatus: function( nodeObj, filterGuid ) {
+      if ( filterGuid ) {        
+        var xpathConstraint = this.treeStatusRef_Name + 
+        '=' + nodeObj.getGuid() +
+        ' and ' + this.treeStatusConstrainedRef_Name +
+        '=' + filterGuid;
+        return this._loadXPath( this.treeStatus, xpathConstraint ).then( function(objs){
+          return objs[0];
+        }.bind(this));   
+      } else {
+        return Promise.resolve( null );
+      }
     },
 
     // *** DATA LOADING - GENERIC***
@@ -496,7 +633,7 @@ define([
     // 
 
     // Subscribe for changes in all objects that are attached to a jsTreeNode
-    _subscribeRefresh: function( edgeObj, nodeObj, groupObj, statusList ) {
+    _subscribeRefresh: function( edgeObj, nodeObj, groupObj, statusObj ) {
       if ( edgeObj ) {
         this._subscribeEdgeRefresh( edgeObj );            
       }
@@ -506,18 +643,19 @@ define([
       if ( nodeObj ) {
         this._subscribeNodeRefresh( nodeObj );
       }
-      statusList.forEach( function(statusObj) {
+      if ( statusObj ) {
         this.subscribeStatusRefresh( statusObj );
-      }, this );
+      }
     },
 
     _subscribeNodeRefresh: function( nodeObj ) {
       this._subscribeObjectRefresh( nodeObj, function( guid ){
         this._loadGuid( guid).then( function(obj) {
           this._jsTreeNodes().filter( function(node) {
-            return node.original && node.original.nodeObj && node.original.nodeObj.getGuid() == guid;
+            return node.original && node.data.nodeObj && node.data.nodeObj.getGuid() == guid;
           }).forEach( function( node ) {
-            node.original.nodeObj = obj;
+            node.data.nodeObj = obj;
+            node.data.nodeObjGuid = obj.getGuid();
             this._refreshNodeText( node );
             this._refreshNodeType( node );
             this._reloadNode( node );
@@ -530,9 +668,9 @@ define([
       this._subscribeObjectRefresh( groupObj, function( guid ){
         this._loadGuid( guid).then( function(obj) {
           this._jsTreeNodes().filter( function(node) {
-            return node.original && node.original.groupObj && node.original.groupObj.getGuid() == guid;
+            return node.original && node.data.groupObj && node.data.groupObj.getGuid() == guid;
           }).forEach( function( node ) {
-            node.original.groupObj = obj;
+            node.data.groupObj = obj;
             this._refreshNodeText( node );
           },this)
         }.bind(this))
@@ -541,12 +679,29 @@ define([
 
     _subscribeEdgeRefresh: function( edgeObj ) {
       this._subscribeObjectRefresh( edgeObj, function( guid ){
-        this._loadGuid( guid).then( function(obj) {
+        this._loadGuid( guid).then( function(newEdgeObj) {
+          var newChildNodeGuid = newEdgeObj.get( this.treeEdgeChildRef_Name );
           this._jsTreeNodes().filter( function(node) {
-            return node.original && node.original.edgeObj && node.original.edgeObj.getGuid() == guid;
+            return node.original && node.data.edgeObj && node.data.edgeObj.getGuid() == guid;
           }).forEach( function( node ) {
-            node.original.edgeObj = obj;
-            this._refreshNodeText( node );
+            if ( node.data.nodeObjGuid == newChildNodeGuid) {
+              node.data.edgeObj = newEdgeObj;
+              node.data.edgeObjGuid = newEdgeObj.getGuid();                
+              this._refreshNodeText( node );
+            } else {
+              this._loadGuid( newChildNodeGuid ).then( function(newNodeObj){
+                node.data.edgeObj = newEdgeObj;
+                node.data.edgeObjGuid = newEdgeObj.getGuid();                
+                node.data.nodeObj = newNodeObj;
+                node.data.nodeObjGuid = newNodeObj.getGuid();                
+                this._refreshNodeText( node );
+                this._refreshNodeType( node );
+                this._reloadNode( node );
+                if ( this._jstree.is_selected( node ) ) {
+                  this._selectNode( node );
+                }
+              }.bind(this));
+            }
           },this)
         }.bind(this))
       })
@@ -555,16 +710,16 @@ define([
     subscribeStatusRefresh: function( statusObj ) {
       this._subscribeObjectRefresh( statusObj, function( guid ){
         this._loadGuid( guid).then( function(obj) {
-          var nodeGuid = obj.get( this.treeStatusRef.split('/')[0] );
+          var nodeGuid = obj.get( this.treeStatusRef_Name );
           this._jsTreeNodes().filter( function(node) {
-            return node.original && node.original.nodeObj && node.original.nodeObj.getGuid() == nodeGuid;
+            return node.original && node.data.nodeObj && node.data.nodeObj.getGuid() == nodeGuid;
           }).forEach( function( node ) {
-            node.original.statusList.forEach( function(status, i) {
+            node.data.statusList.forEach( function(status, i) {
               if ( status.getGuid() == guid ) {
-                node.original.statusList[i] = obj;
+                node.data.statusList[i] = obj;
               }
             });
-            node.original.statusList.push( obj );
+            node.data.statusList.push( obj );
             this._refreshNodeText( node );
           },this)
         }.bind(this))
@@ -592,23 +747,37 @@ define([
       }
     },
 
-
-
     // recreate all node texts in the tree
     _refreshNodeTexts: function() {
       this._jsTreeNodes().forEach( function( node ) {
         if ( node.id != '#' ) {
-          this._jstree.rename_node( node, this._buildNodeText( node.original.edgeObj, node.original.nodeObj, node.original.groupObj, node.original.statusList ) );
+          this._refreshNodeText( node );
+          this._refreshNodeType( node );
+          this._jstree.rename_node( node, this._buildNodeText( node.data.edgeObj, node.data.nodeObj, node.data.groupObj, node.data.statusObj ) );
         }
       }, this );
     },
 
     _refreshNodeText: function( node ) {
-      this._jstree.rename_node( node, this._buildNodeText( node.original.edgeObj, node.original.nodeObj, node.original.groupObj, node.original.statusList ) );
+      this._jstree.rename_node( node, this._buildNodeText( node.data.edgeObj, node.data.nodeObj, node.data.groupObj, node.data.statusObj ) );
     },
 
     _refreshNodeType: function( node ) {
-      this._jstree.set_type( node, node.original.nodeObj.get(this.nodeTypeAttribute) );
+      this._jstree.set_type( node, this._getNodeObjType( node.data.nodeObj ) );
+    },
+
+    _getNodeObjType: function( nodeObj ) {
+      if ( this.nodeTypeAttribute ) {   
+        var nodeType = nodeObj.get(this.nodeTypeAttribute);
+        if ( this.typePrefixFiltered && this._contextObj.get( this.treeStatusFilterRef_Name) ) {
+          var nodeTypePrefixed = this.typePrefixFiltered + nodeType;
+          if ( this._treeTypeMapping[ nodeTypePrefixed ] ) {
+            return nodeTypePrefixed;
+          }
+        } 
+        return nodeType;
+      }
+      return null;
     },
 
     _jsTreeNodes: function() {
@@ -631,14 +800,19 @@ define([
     */
 
     // method for building the jsTree Node data object
-    _buildNode: function( edgeObj, nodeObj, groupObj, statusList ) {
+    _buildNode: function( edgeObj, nodeObj, groupObj, statusObj ) {
       var nodeConfig = {
-        edgeObj: edgeObj,
-        nodeObj: nodeObj,
-        groupObj: groupObj,
-        statusList: statusList,
+        data: {
+          edgeObj: edgeObj,
+          nodeObj: nodeObj,
+          groupObj: groupObj,
+          edgeObjGuid: edgeObj && edgeObj.getGuid(),
+          nodeObjGuid: nodeObj && nodeObj.getGuid(),
+          statusObj: statusObj
+        },
+
 //        id: obj.getGuid(),
-        text: this._buildNodeText( edgeObj, nodeObj, groupObj, statusList ),
+        text: this._buildNodeText( edgeObj, nodeObj, groupObj, statusObj ),
         children: (nodeObj && nodeObj.get( this.nodeHasChildrenAttribute )) ? true : [],
         state: {
           opened: false
@@ -649,20 +823,17 @@ define([
         }
       };
 
-      if ( this.nodeTypeAttribute ) {
-        nodeConfig.type = nodeObj && nodeObj.get(this.nodeTypeAttribute);
+      if ( nodeObj) {
+        nodeConfig.type = this._getNodeObjType( nodeObj );
       }
       return nodeConfig;
     },
 
     // compose the full node text entry with 
-    _buildNodeText: function( edgeObj, nodeObj, groupObj, statusList ) {
+    _buildNodeText: function( edgeObj, nodeObj, groupObj, statusObj ) {
       var text = [];
       // Only use the Status matching the current constraint for display
-      var constraintGuid = this._contextObj.get( this.treeStatusFilterRef.split('/')[0]);      
-      var statusObj = statusList.find( function(obj){
-        return obj.get( this.treeStatusConstrainedRef.split('/')[0] ) == constraintGuid;
-      }, this);
+      var constraintGuid = this._contextObj.get( this.treeStatusFilterRef_Name);      
 
       this.displayConfig.forEach( function( cfg ){
         if ( cfg.displayFilter ) {
@@ -698,27 +869,30 @@ define([
           }
         }
 
-        if ( cfg.displayMode == 'text' ) {
-          text.push({
-            text: attributeValue,
-            class: cfg.displayCssClass
-          });
-        } else if ( cfg.displayMode == 'type' ) {
-          var typeEntry = this._treeTypeMapping[ attributeValue ];
-          if ( typeEntry ) {
-            text.push(
-              _.extend( {
-                type: attributeValue,
-                class: cfg.displayCssClass
-              }, typeEntry)
-            );
-          } else {
-            text.push( {
-              text: '['+attributeValue+']'
-            } );
-          }  
+        if ( attributeValue != null && attributeValue != '') {
+          if ( cfg.displayMode == 'text' ) {
+            text.push({
+              text: attributeValue,
+              class: cfg.displayCssClass
+            });
+          } else if ( cfg.displayMode == 'type' ) {
+            var typeEntry = this._treeTypeMapping[ attributeValue ];
+            if ( typeEntry ) {
+              text.push(
+                _.extend( {
+                  type: attributeValue,
+                  class: cfg.displayCssClass
+                }, typeEntry)
+              );
+            } else {
+              text.push( {
+                text: '['+attributeValue+']'
+              } );
+            }  
+          }
         }
       },this);
+      
       return text;
     },
 
