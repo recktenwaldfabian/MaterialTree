@@ -265,5 +265,11 @@
           <description>This prefix string is added to to the Type (Node) attribute to determine the type icon when filter is set.</description>
         </property>
 
+        <property key="onSelectionChangeMf" type="microflow" required="false">
+          <caption>OnSelectionChange microflow</caption>
+          <category>Interaction</category>
+          <description>Microflow to be triggered when the selection is changed.</description>
+        </property>
+
     </properties>
 </widget>

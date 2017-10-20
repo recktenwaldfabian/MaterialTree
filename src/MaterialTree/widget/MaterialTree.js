@@ -78,6 +78,7 @@ define([
     displayConfig: '', // configuration for which entries should be shown in the tree
 
     contextAttributeMapping: '', // defines attributes that are copied from the selected edge/node to the context
+    onSelectionChangeMf: '', // name of microflow that is triggered, when the tree selection is changed.
 
     // Internal variables. Non-primitives created in the prototype are shared between all widget instances.
     _handles: null,
@@ -142,7 +143,34 @@ define([
       if (update_callback) update_callback();
     },
 
-    _initializeJsTree: function() {      
+    _initializeJsTree: function() {
+
+      var attributeReadonly = false;
+      if ( this._contextObj.isReadonlyAttr( this.treeContextEdgeSelectedRef_Name ) ){
+        logger.warn(this.treeContextEdgeSelectedRef_Name + ' is read only!');
+        attributeReadonly = true;
+      }
+
+      if ( this._contextObj.isReadonlyAttr( this.treeContextNodeSelectedRef_Name ) ){
+        logger.warn(this.treeContextNodeSelectedRef_Name + ' is read only!');
+        attributeReadonly = true;
+      }
+
+      // copy all attributes defined in the mapping when selecting a node in the tree
+      this.contextAttributeMapping.forEach( function( mapping ) {
+        if ( this._contextObj.isReadonlyAttr( mapping.mapContextAttribute ) ){
+          logger.warn( mapping.mapContextAttribute + ' is read only!');
+          attributeReadonly = true;
+        }
+      }, this);
+
+      if ( attributeReadonly ) {
+        var dom_p = document.createElement('p');
+        dom_p.appendChild( document.createTextNode('Some attributes are readonly, see warnings') );
+        this.domNode.appendChild( dom_p );
+        return;
+      }
+
       this.subscribe({
         guid: this._contextObj.getGuid(),
         callback: function() {
@@ -204,7 +232,14 @@ define([
         'sort' : function( a, b) {
           var nodeA = this._jstree.get_node( a );
           var nodeB = this._jstree.get_node( b );
-          return nodeA.data.nodeObj.get( this.nodeSortAttribute ).localeCompare( nodeB.data.nodeObj.get( this.nodeSortAttribute ) );
+          if ( nodeA.data.nodeObj && nodeB.data.nodeObj ) {
+            var nodeASort = nodeA.data.nodeObj.get( this.nodeSortAttribute );
+            var nodeBSort = nodeB.data.nodeObj.get( this.nodeSortAttribute );
+            if ( nodeASort && nodeBSort ) {
+              return nodeASort.localeCompare( nodeBSort );
+            }
+          }
+          return a.localeCompare(b);
         }.bind(this)
 
       }).on( 'changed.jstree', dojoLang.hitch( this, '_changed_jstree') )
@@ -213,14 +248,6 @@ define([
       this._jstree = $(this.domNode).jstree(true);
 
       //this._resetSubscriptions();
-    },
-
-    _copyObjectAttribute: function( objSrc, objDst, attributeSrc, attributeDst ) {
-      var value = objDst.isBoolean( attributeDst ) ? false : null;
-      if ( objSrc ) {
-        value = objSrc.get( attributeSrc );
-      }
-      objDst.set( attributeDst, value );
     },
 
     _setNodeLoading: function( node, loading ) {
@@ -475,39 +502,36 @@ define([
     _selectNode: function( node ) {
       var nodeObj = node.data.nodeObj;
       var edgeObj = node.data.edgeObj;
+      
+      this._contextObj.set(
+        this.treeContextEdgeSelectedRef_Name,
+        edgeObj ? edgeObj.getGuid() : null
+      );
 
-      if ( this._contextObj.isReadonlyAttr( this.treeContextEdgeSelectedRef_Name ) ){
-        logger.warn(this.treeContextEdgeSelectedRef_Name + ' is read only!');
-      } else {
-        this._contextObj.set(
-          this.treeContextEdgeSelectedRef_Name,
-          edgeObj ? edgeObj.getGuid() : null
-        );
-      }
-
-      if ( this._contextObj.isReadonlyAttr( this.treeContextNodeSelectedRef_Name ) ){
-        logger.warn(this.treeContextNodeSelectedRef_Name + ' is read only!');
-      } else {
-        this._contextObj.set(
-          this.treeContextNodeSelectedRef_Name,
-          nodeObj ? nodeObj.getGuid() : null
-        );
-      }
+      this._contextObj.set(
+        this.treeContextNodeSelectedRef_Name,
+        nodeObj ? nodeObj.getGuid() : null
+      );
 
       // copy all attributes defined in the mapping when selecting a node in the tree
       this.contextAttributeMapping.forEach( function( mapping ) {
-        if ( this._contextObj.isReadonlyAttr( mapping.mapContextAttribute ) ){
-          logger.warn( mapping.mapContextAttribute + ' is read only!');
-        } else {
-          if ( mapping.mapNodeAttribute ) {
-            this._copyObjectAttribute( nodeObj, this._contextObj, mapping.mapNodeAttribute, mapping.mapContextAttribute);
-          } else if ( mapping.mapEdgeAttribute ) {
-            this._copyObjectAttribute( edgeObj, this._contextObj, mapping.mapEdgeAttribute, mapping.mapContextAttribute);
-          }
+        if ( mapping.mapNodeAttribute ) {
+          this._copyObjectAttribute( nodeObj, this._contextObj, mapping.mapNodeAttribute, mapping.mapContextAttribute);
+        } else if ( mapping.mapEdgeAttribute ) {
+          this._copyObjectAttribute( edgeObj, this._contextObj, mapping.mapEdgeAttribute, mapping.mapContextAttribute);
         }
       }, this);
-  },
-    
+
+    },
+
+    _copyObjectAttribute: function( objSrc, objDst, attributeSrc, attributeDst ) {
+      var value = objDst.isBoolean( attributeDst ) ? false : null;
+      if ( objSrc ) {
+        value = objSrc.get( attributeSrc );
+      }
+      objDst.set( attributeDst, value );
+    },
+
     // *** DATA LOADING ***
     // Methods for loading data from the server (returning a Promise)
 
