@@ -95,7 +95,7 @@
             </attributeTypes>
         </property>
 
-        <property key="nodeSortAttribute" type="attribute" required="true" entityProperty="treeNode">
+        <property key="nodeSortAttribute" type="attribute" required="false" entityProperty="treeNode">
             <caption>Sort Attribute (Node)</caption>
             <category>Attributes</category>
             <description>Attribute to sort the nodes on.</description>

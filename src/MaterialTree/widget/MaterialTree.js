@@ -217,8 +217,8 @@ define([
           'title' : mapentry.title
         };
       }, this);
-
-      this._jstree = $(this.domNode).jstree({
+      
+      var jsTreeConfig = {
         'core' : {
           'multiple' : false,
           'data' : dojoLang.hitch( this, '_treeDataSource'),
@@ -228,8 +228,14 @@ define([
           },
         },
         'types' : this._treeTypeMapping,
-        'plugins' : [ 'types', 'sort' ],
-        'sort' : function( a, b) {
+        'plugins' : [ 'types' ],
+      };
+
+      if ( this.nodeSortAttribute ) {
+        // If a sort attribute is configured, enabled sort in the tree
+        // KNOWN ISSUE - on larger lists, the sort+rename behaviour gets in conflict
+        jsTreeConfig.plugins.push( 'sort' );
+        jsTreeConfig.sort = function( a, b) {
           var nodeA = this._jstree.get_node( a );
           var nodeB = this._jstree.get_node( b );
           if ( nodeA.data.nodeObj && nodeB.data.nodeObj ) {
@@ -240,9 +246,11 @@ define([
             }
           }
           return a.localeCompare(b);
-        }.bind(this)
+        }.bind(this);
+      }
 
-      }).on( 'changed.jstree', dojoLang.hitch( this, '_changed_jstree') )
+      this._jstree = $(this.domNode).jstree( jsTreeConfig )
+      .on( 'changed.jstree', dojoLang.hitch( this, '_changed_jstree') )
       .on( 'load_node.jstree', dojoLang.hitch( this, '_load_node_jstree') );
 
       this._jstree = $(this.domNode).jstree(true);
