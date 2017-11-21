@@ -269,6 +269,7 @@
           <caption>OnSelectionChange microflow</caption>
           <category>Interaction</category>
           <description>Microflow to be triggered when the selection is changed.</description>
+          <returnType type="Void" />
         </property>
 
     </properties>

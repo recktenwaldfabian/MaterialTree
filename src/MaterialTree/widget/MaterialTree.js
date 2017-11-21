@@ -117,7 +117,7 @@ define([
 
       if ( this._contextObj ) {
         if (obj) {
-          if ( this._contextObj.getGuid() = obj.getGuid() ) {
+          if ( this._contextObj.getGuid() == obj.getGuid() ) {
             // nothing to be changed
             this._contextObj = obj;
           } else {
@@ -522,6 +522,9 @@ define([
         }
       }, this);
 
+      if ( this.onSelectionChangeMf ) {
+        this._uiAction( this.onSelectionChangeMf, this._contextObj );
+      }
     },
 
     _copyObjectAttribute: function( objSrc, objDst, attributeSrc, attributeDst ) {
@@ -951,6 +954,29 @@ define([
     uninitialize: function () {
       logger.debug(this.id + ".uninitialize");
     },
+    
+    _uiAction: function( mfName, obj ) {
+      return new Promise( function( resolve,reject){
+        var options = {
+          scope: this.mxform,
+          callback: function() {
+            resolve();
+          },
+          error: function( error ) {
+            reject( error );
+          }
+        };
+
+        if ( obj ) {
+          options.params = {
+            applyto: "selection",
+            guids: [ obj.getGuid() ]
+          };
+        }
+
+        mx.ui.action( mfName, options, this );
+      }.bind(this));
+    }
 
   });
 });
